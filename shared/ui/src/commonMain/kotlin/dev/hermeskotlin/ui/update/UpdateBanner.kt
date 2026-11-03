@@ -85,11 +85,12 @@ fun rememberUpdateOffer(
     LaunchedEffect(repo, version, enabled, versionCode) {
         update = when {
             !enabled -> null
-            // A desktop passes no version code and has no APK to install: only a phone asks its host.
-            versionCode > 0 -> host.check(versionCode)
-                ?: if (!repo.isNullOrBlank() && version != null) checker.check(repo, version) else null
-            !repo.isNullOrBlank() && version != null -> checker.check(repo, version)
-            else -> null
+            else -> {
+                // GitHub first: it answers from anywhere, where the host is only reachable on the user's tailnet.
+                val release = if (!repo.isNullOrBlank() && version != null) checker.check(repo, version) else null
+                // A desktop passes no version code and has no APK to install: only a phone asks its host.
+                release ?: if (versionCode > 0) host.check(versionCode) else null
+            }
         }
     }
     return UpdateOffer(update) {

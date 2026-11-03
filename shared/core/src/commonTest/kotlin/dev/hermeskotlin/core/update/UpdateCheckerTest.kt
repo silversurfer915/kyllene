@@ -142,4 +142,17 @@ class UpdateCheckerTest {
         assertNull(redirecting("https://example.com/repositories/1/releases/latest").check("o/r", "0.2.0"))
         assertNull(redirecting("https://api.github.com/repos/o/r/releases/latest").check("o/r", "0.2.0"))
     }
+
+    @Test
+    fun aReleaseNamesTheHashBesideItsApk() {
+        val release = HermesJson.parseToJsonElement(
+            """{"tag_name":"v0.4.0","html_url":"https://github.com/o/r/releases/tag/v0.4.0",
+                "assets":[{"name":"kyllene-0.4.0.apk","browser_download_url":"https://x/app.apk"},
+                          {"name":"kyllene-0.4.0.apk.sha256","browser_download_url":"https://x/app.apk.sha256"},
+                          {"name":"kyllene-wear-0.4.0.apk","browser_download_url":"https://x/wear.apk"}]}""",
+        ) as JsonObject
+        val update = parseRelease(release, listOf("arm64-v8a"))!!
+        assertEquals("https://x/app.apk", update.downloadUrl)
+        assertEquals("https://x/app.apk.sha256", update.sha256Url)
+    }
 }

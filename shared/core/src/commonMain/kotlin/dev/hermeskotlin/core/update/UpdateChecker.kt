@@ -25,6 +25,8 @@ data class AppUpdate(
     val downloadUrl: String?,
     val sha256: String? = null,
     val fromServer: Boolean = false,
+    /** Where the release published its hash (`<apk>.sha256`), read before installing it. */
+    val sha256Url: String? = null,
 )
 
 /** The ABIs this device runs, most preferred first (`Build.SUPPORTED_ABIS`). */
@@ -109,8 +111,13 @@ internal fun parseRelease(release: JsonObject, abis: List<String>, installer: St
         .filterNot { (name, _) -> WEAR_APK.containsMatchIn(name) }
     val forAbi = abis.firstNotNullOfOrNull { abi -> apks.firstOrNull { (name, _) -> name.endsWith("_$abi") } }
     val universal = apks.firstOrNull { (name, _) -> APK_ABIS.none { name.endsWith("_$it") } }
-    val apk = (forAbi ?: universal ?: apks.firstOrNull())?.second?.text("browser_download_url")
-    return AppUpdate(tag.removePrefix("v"), page, apk)
+    val chosen = forAbi ?: universal ?: apks.firstOrNull()
+    val apk = chosen?.second?.text("browser_download_url")
+    // release.yml writes "<apk>.sha256" beside every APK: what the installer checks the download against.
+    val sums = chosen?.second?.text("name")?.let { name ->
+        assets.firstOrNull { it.text("name") == "$name.sha256" }?.text("browser_download_url")
+    }
+    return AppUpdate(tag.removePrefix("v"), page, apk, sha256Url = sums)
 }
 
 /** The ABIs a release builds an APK of its own for; see androidApp's `splits`. */

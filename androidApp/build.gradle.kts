@@ -8,7 +8,10 @@ plugins {
 // A release sets these from its tag (-PappVersion=0.2.0) and repo (-PreleasesRepo=owner/name); see
 // .github/workflows/release.yml. A local build is 0.1.0 and never looks for updates.
 val appVersion = (findProperty("appVersion") as String?)?.removePrefix("v") ?: "0.1.0"
-val releasesRepo = (findProperty("releasesRepo") as String?).orEmpty()
+// This fork publishes its releases to its own repo, so a local build still checks GitHub for updates. Only an
+// explicit -PreleasesRepo turns on release packaging (signed splits), which needs keystore.properties.
+val releaseSource: String = (findProperty("releasesRepo") as String?).orEmpty()
+val releasesRepo = "silversurfer915/kyllene"
 
 android {
     namespace = "dev.hermeskotlin.android"
@@ -39,7 +42,7 @@ android {
     // A published APK signed with a debug key wouldn't install over the real one, so a release fails instead.
     // It fails when an APK is packaged, not when this project is configured: the desktop release sets releasesRepo
     // too, has no Android key, and configures every project.
-    if (keystore == null && releasesRepo.isNotEmpty()) {
+    if (keystore == null && releaseSource.isNotEmpty()) {
         val missing = "releasesRepo is set but keystore.properties is missing"
         tasks.configureEach { if (name.startsWith("package")) doFirst { throw GradleException(missing) } }
     }
@@ -59,7 +62,7 @@ android {
     // universal one; the in-app update offers the one for the device. Other builds stay one APK.
     splits {
         abi {
-            isEnable = releasesRepo.isNotEmpty()
+            isEnable = releaseSource.isNotEmpty()
             reset()
             include("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
             isUniversalApk = true
