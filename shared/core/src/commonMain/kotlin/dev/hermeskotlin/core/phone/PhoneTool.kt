@@ -14,6 +14,8 @@ enum class PhoneTool(val id: String, val title: String, val detail: String) {
     Network("phone_network", "Network", "Wi-Fi, mobile data or offline, whether it's metered, and a VPN."),
     Sound("phone_sound", "Sound", "Do Not Disturb, the ringer and volumes. A change asks you first."),
     Alarms("phone_alarm", "Alarms and timers", "Sets one in your clock app after you allow it."),
+    Torch("phone_torch", "Flashlight", "Turns the flashlight on, off, or toggles it."),
+    Find("phone_find", "Find my phone", "Rings the alarm sound at full volume, past Do Not Disturb, or buzzes, for a few seconds."),
     ScreenTime("phone_screen_time", "Screen time", "Which apps you used and for how long, screen-on time and unlocks, up to a week back."),
     Open("phone_open", "Open links, maps and apps", "Opens a link, a place, an app or the share sheet after you allow it."),
     Clipboard("phone_clipboard", "Copy to the clipboard", "Puts text on your clipboard after you allow it. Never reads what's there."),

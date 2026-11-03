@@ -21,6 +21,8 @@
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <!-- The Alarms phone tool hands an alarm or a timer to the clock app. -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- The Find my phone phone tool buzzes; a normal permission, granted at install. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- The Screen time phone tool, once the user grants Usage access in Android's settings. -->
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"

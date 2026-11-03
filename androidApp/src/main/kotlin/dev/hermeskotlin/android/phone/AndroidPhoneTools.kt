@@ -32,6 +32,8 @@ class AndroidPhoneTools(
 
     private val sound = SoundTool(context, confirmations)
     private val alarms = AlarmTool(context, confirmations)
+    private val torch = TorchTool(context)
+    private val find = FindTool(context)
     private val screenTime = ScreenTimeTool(context)
     private val open = OpenTool(context, confirmations)
     private val clipboard = ClipboardTool(confirmations)
@@ -49,6 +51,8 @@ class AndroidPhoneTools(
             PhoneTool.Network -> network()
             PhoneTool.Sound -> sound.run(args)
             PhoneTool.Alarms -> alarms.run(args)
+            PhoneTool.Torch -> torch.run(args)
+            PhoneTool.Find -> find.run(args)
             PhoneTool.ScreenTime -> screenTime.run(args)
             PhoneTool.Open -> open.run(args)
             PhoneTool.Clipboard -> clipboard.run(args)

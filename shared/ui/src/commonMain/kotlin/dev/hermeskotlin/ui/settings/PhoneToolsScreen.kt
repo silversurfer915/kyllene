@@ -29,6 +29,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.AlarmClock
+import com.composables.icons.lucide.Search
+import com.composables.icons.lucide.Flashlight
 import com.composables.icons.lucide.BatteryMedium
 import com.composables.icons.lucide.CalendarDays
 import com.composables.icons.lucide.ChevronDown
@@ -640,6 +642,8 @@ internal val PhoneTool.icon: ImageVector
         PhoneTool.Network -> Lucide.Wifi
         PhoneTool.Sound -> Lucide.Volume2
         PhoneTool.Alarms -> Lucide.AlarmClock
+        PhoneTool.Torch -> Lucide.Flashlight
+        PhoneTool.Find -> Lucide.Search
         PhoneTool.ScreenTime -> Lucide.Hourglass
         PhoneTool.Open -> Lucide.ExternalLink
         PhoneTool.Clipboard -> Lucide.ClipboardCopy
