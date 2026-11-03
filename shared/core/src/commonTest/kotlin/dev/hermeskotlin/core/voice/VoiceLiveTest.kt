@@ -108,4 +108,12 @@ class VoiceLiveTest {
         val event = parseLiveEvent("""{"type":"screen.card","title":"Tomorrow","body":"Maths 6am"}""")
         assertEquals(LiveEvent.Screen("Tomorrow", "Maths 6am"), event)
     }
+
+    @Test
+    fun aRequestToOpenAChatIsReadAsOne() {
+        val event = parseLiveEvent("""{"type":"screen.open_chat","chat":"s-1","title":"the build"}""")
+        assertEquals(LiveEvent.OpenChat("s-1", "the build"), event)
+        // A frame with no chat is not a request at all.
+        assertNull(parseLiveEvent("""{"type":"screen.open_chat","title":"the build"}"""))
+    }
 }

@@ -576,6 +576,7 @@ fun ChatScreen(
         attachmentError = attachmentError,
         comments = viewModel.comments.collectAsStateWithLifecycle().value,
         voiceChat = viewModel.voice.chat.collectAsStateWithLifecycle().value,
+        onOpenChat = onOpenChat,
         dictation = viewModel.voice.dictation.collectAsStateWithLifecycle().value,
         readAloud = viewModel.voice.reading.collectAsStateWithLifecycle().value,
         suggestions = viewModel.suggestions.collectAsStateWithLifecycle().value,
@@ -743,6 +744,8 @@ internal fun ChatView(
     /** Comments on parts of the chat, waiting for the next send. */
     comments: List<PendingComment> = emptyList(),
     voiceChat: VoiceChatState,
+    /** Brings another chat up, when the voice asks for one (`open_chat`). */
+    onOpenChat: (String, String) -> Unit = { _, _ -> },
     dictation: DictationState,
     /** The reply being read aloud, and why the last one couldn't be. */
     readAloud: ReadAloudState = ReadAloudState(),
@@ -1209,6 +1212,12 @@ internal fun ChatView(
                     )
                 }
             }
+        }
+        // The voice asked for another chat: the call ends and that chat comes up.
+        LaunchedEffect(voiceChat.openChat) {
+            val (id, title) = voiceChat.openChat ?: return@LaunchedEffect
+            actions.stopVoiceChat()
+            onOpenChat(id, title)
         }
         AnimatedVisibility(visible = voiceFull, enter = fadeIn(), exit = fadeOut()) {
             val replyText = (state.messages.lastOrNull { it is ChatMessage.Assistant && it.text.isNotBlank() } as? ChatMessage.Assistant)?.text

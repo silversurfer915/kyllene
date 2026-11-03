@@ -97,6 +97,7 @@ import dev.hermeskotlin.designsystem.bodySmall
 import dev.hermeskotlin.designsystem.caption
 import dev.hermeskotlin.designsystem.colors
 import dev.hermeskotlin.designsystem.components.LocalGlow
+import dev.hermeskotlin.designsystem.components.MarkdownText
 import dev.hermeskotlin.designsystem.components.MinTouchTarget
 import dev.hermeskotlin.designsystem.components.Spinner
 import dev.hermeskotlin.designsystem.danger
@@ -249,11 +250,11 @@ private fun DoneCard(card: CallCard, onDismiss: () -> Unit, modifier: Modifier) 
             )
             RingButton(Lucide.X, "Hide it", onDismiss)
         }
-        Text(
+        // Markdown, as the reply is: a table or a short list on the screen reads better than a paragraph of it.
+        MarkdownText(
             card.body,
-            style = Theme[typography][bodySmall].copy(fontSize = 14.sp, lineHeight = 20.sp),
-            color = Theme[colors][textColor],
-            modifier = Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState()).padding(end = 10.dp),
+            Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState()).padding(end = 10.dp),
+            textStyle = Theme[typography][bodySmall].copy(fontSize = 14.sp, lineHeight = 20.sp),
         )
     }
 }

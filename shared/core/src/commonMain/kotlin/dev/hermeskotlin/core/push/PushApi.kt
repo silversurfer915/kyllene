@@ -24,6 +24,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /** What the herald-push plugin answers to `/herald-push …` (JSON in the command's output). */
@@ -427,6 +428,24 @@ class PushApi(private val connection: GatewayConnection) {
     private suspend fun command(arg: String): PushPluginReply? {
         val output = output(arg) ?: return null
         return runCatching { HermesJson.decodeFromString(PushPluginReply.serializer(), output) }.getOrNull()
+    }
+
+    /**
+     * Asks the host to ring this phone when [sessionId]'s turn ends, so the ring comes even with the app closed.
+     * False when the plugin is older than the watch or refused it (an unknown chat, no phone): the caller then
+     * watches from here instead.
+     */
+    suspend fun watchWhenDone(sessionId: String, title: String?, reason: String): Boolean {
+        val body = buildJsonObject {
+            put("session", sessionId)
+            title?.takeIf { it.isNotBlank() }?.let { put("title", it.take(120)) }
+            put("reason", reason.take(300))
+        }
+        val printed = output("watch $body") ?: return false
+        return runCatching {
+            (HermesJson.parseToJsonElement(printed) as? JsonObject)
+                ?.get("ok")?.jsonPrimitive?.booleanOrNull == true
+        }.getOrDefault(false)
     }
 
     /** What `/herald-push <arg>` printed, or null when the plugin isn't loaded. */

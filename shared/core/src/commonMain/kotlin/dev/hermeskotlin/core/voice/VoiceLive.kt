@@ -42,6 +42,8 @@ sealed interface LiveEvent {
     data class Closed(val reason: String, val usageSeconds: Double?) : LiveEvent
     /** Something for the call's screen rather than the ear: a card Hermes drew while it talked. */
     data class Screen(val title: String, val body: String) : LiveEvent
+    /** The voice asked for another chat to be opened: the call ends and the chat comes up. */
+    data class OpenChat(val id: String, val title: String) : LiveEvent
 }
 
 private val eventJson = Json { ignoreUnknownKeys = true }
@@ -71,6 +73,8 @@ fun parseLiveEvent(raw: String): LiveEvent? {
         "session.closed" -> LiveEvent.Closed(event.text("reason") ?: "closed", (event["usage"] as? JsonObject)?.number("seconds"))
         // The adapter is the only one that sends this: a card the voice put on the call's screen.
         "screen.card" -> LiveEvent.Screen(event.text("title").orEmpty(), event.text("body").orEmpty())
+        "screen.open_chat" -> event.text("chat")?.takeIf { it.isNotBlank() }
+            ?.let { LiveEvent.OpenChat(it, event.text("title").orEmpty()) }
         else -> null
     }
 }

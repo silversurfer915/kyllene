@@ -2,6 +2,7 @@ package dev.hermeskotlin.android.phone
 
 import dev.hermeskotlin.android.notify.ChatNotifications
 import dev.hermeskotlin.core.phone.CallReason
+import dev.hermeskotlin.core.push.PushApi
 import dev.hermeskotlin.core.sessions.ActiveSessions
 import dev.hermeskotlin.core.sessions.LiveSessions
 import dev.hermeskotlin.core.voice.CallLater
@@ -29,12 +30,15 @@ internal class AndroidCallLater(
     private val live: ActiveSessions,
     private val jobs: VoiceJobs,
     private val scope: CoroutineScope,
+    private val api: PushApi,
 ) : CallLater {
 
     /** The watch armed for a chat, so asking again replaces it rather than ringing twice. */
     private val armed = ConcurrentHashMap<String, Job>()
 
     override suspend fun whenDone(chatId: String, title: String?, reason: String, running: Boolean): Boolean {
+        // Ask the host first: its watch survives this app being closed or force-stopped, this one doesn't.
+        if (runCatching { api.watchWhenDone(chatId, title, reason) }.getOrDefault(false)) return true
         // Nothing in flight: the ring could never come, so the voice is told not to promise one. The turn that asked
         // counts as running whatever a live list that nobody has been collecting says; otherwise ask for a fresh one.
         val jobsRunning = jobs.jobs.value.any {
@@ -79,5 +83,5 @@ internal class AndroidCallLater(
 
 /** Koin definition: the notifier, the gateway's live sessions and the voice's jobs are all in the graph. */
 val callLaterModule = module {
-    single<CallLater> { AndroidCallLater(get(), get(), get(), get()) }
+    single<CallLater> { AndroidCallLater(get(), get(), get(), get(), get()) }
 }

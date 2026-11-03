@@ -25,6 +25,7 @@ class VoiceToolBridgeTest {
         endCall: (() -> Unit)? = null,
         showCard: ((String, String) -> Unit)? = null,
         whenDone: (suspend (String) -> Boolean)? = null,
+        openChat: ((String, String) -> Unit)? = null,
     ) = VoiceToolBridge(
         lastReply, steer, stop, jobs, recall, search,
         chats = chats,
@@ -32,6 +33,7 @@ class VoiceToolBridgeTest {
         endCall = endCall,
         showCard = showCard,
         whenDone = whenDone,
+        openChat = openChat,
     )
 
     private fun call(name: String, vararg args: Pair<String, String>) =
@@ -465,5 +467,29 @@ class VoiceToolBridgeTest {
         var reason: String? = null
         bridge(whenDone = { words -> reason = words; true }).handle(call(VoiceToolBridge.CALL_ME_WHEN_DONE))
         assertEquals(VoiceToolBridge.DEFAULT_CALL_REASON, reason)
+    }
+
+    @Test
+    fun openChatIsOfferedOnlyWithAChatListToSearch() {
+        assertTrue(VoiceToolBridge.OPEN_CHAT !in bridge(openChat = { _, _ -> }).declarations().map { it.name })
+        val wired = bridge(chats = FakeChats(), openChat = { _, _ -> }).declarations().map { it.name }
+        assertTrue(VoiceToolBridge.OPEN_CHAT in wired)
+    }
+
+    @Test
+    fun openChatBringsUpTheChatItFound() = runTest {
+        var opened: Pair<String, String>? = null
+        val outcome = bridge(chats = FakeChats(), openChat = { id, title -> opened = id to title })
+            .handle(call(VoiceToolBridge.OPEN_CHAT, "chat" to "the build"))
+
+        assertEquals("opening", outcome.status())
+        assertEquals("s-1" to "fixing the android build", opened)
+    }
+
+    @Test
+    fun openChatSaysWhenNothingMatches() = runTest {
+        val outcome = bridge(chats = FakeChats(hits = emptyList()), openChat = { _, _ -> })
+            .handle(call(VoiceToolBridge.OPEN_CHAT, "chat" to "unicycles"))
+        assertEquals("empty", outcome.status())
     }
 }

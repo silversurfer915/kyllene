@@ -217,6 +217,7 @@ internal class LiveConversation(
                         break
                     }
                     is LiveEvent.Screen -> state.update { it.copy(card = CallCard(event.title, event.body)) }
+                    is LiveEvent.OpenChat -> state.update { it.copy(openChat = event.id to event.title) }
                     LiveEvent.Started -> {
                         onConnectionResult()
                         started.complete(Unit)

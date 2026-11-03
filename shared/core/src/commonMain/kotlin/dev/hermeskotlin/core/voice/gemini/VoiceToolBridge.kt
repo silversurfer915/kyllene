@@ -68,6 +68,8 @@ class VoiceToolBridge(
     private val showCard: ((String, String) -> Unit)? = null,
     /** Rings this phone when the chat's work ends, with what the voice should say when it's answered. */
     private val whenDone: (suspend (String) -> Boolean)? = null,
+    /** Brings another chat to the screen: id and title. Null where the call can't move the app. */
+    private val openChat: ((String, String) -> Unit)? = null,
 ) {
 
     /** The declarations for this call, in the order the model should prefer them. */
@@ -79,6 +81,7 @@ class VoiceToolBridge(
         if (setAskFirst != null) add(askFirstDeclaration())
         if (showCard != null) add(showScreenDeclaration())
         if (whenDone != null) add(callWhenDoneDeclaration())
+        if (openChat != null && chats != null) add(openChatDeclaration())
         if (endCall != null) add(endConversationDeclaration())
     }
 
@@ -220,6 +223,7 @@ class VoiceToolBridge(
         SET_ASK_FIRST -> setAskFirstTool(call.arguments["ask"])
         SHOW_ON_SCREEN -> showOnScreen(call.arguments["title"], call.arguments["body"])
         CALL_ME_WHEN_DONE -> callMeWhenDone(call.arguments["reason"])
+        OPEN_CHAT -> openChatTool(call.arguments["chat"])
         END_CONVERSATION -> endConversation()
         else -> failure("That isn't something I can do on this call.", call.name)
     }
@@ -321,6 +325,48 @@ class VoiceToolBridge(
             buildJsonObject {
                 put("status", "armed")
                 put("message", "I'll ring them when it's done, so they can hang up.")
+            },
+            WHEN_IDLE,
+        )
+    }
+
+    private fun openChatDeclaration(): GeminiLiveProtocol.FunctionDeclaration =
+        GeminiLiveProtocol.FunctionDeclaration(
+            name = OPEN_CHAT,
+            description = "Bring one of the user's other chats to the screen, when they ask to open or go back to " +
+                "it. The call ends as it opens; say you're opening it, then stay quiet.",
+            parameters = buildJsonObject {
+                put("type", "OBJECT")
+                putJsonObject("properties") {
+                    putJsonObject("chat") {
+                        put("type", "STRING")
+                        put("description", "The chat id from find_chat, or words describing it.")
+                    }
+                }
+                putJsonArray("required") { add(JsonPrimitive("chat")) }
+            },
+            behavior = GeminiLiveProtocol.FunctionDeclaration.Behavior.NON_BLOCKING,
+        )
+
+    private suspend fun openChatTool(chat: String?): ToolOutcome {
+        val words = chat?.trim().orEmpty()
+        if (words.isEmpty()) return failure("I didn't know which chat you meant.", OPEN_CHAT, WHEN_IDLE)
+        val lookup = chats ?: return failure("I can't see your other chats from this call.", OPEN_CHAT, WHEN_IDLE)
+        val open = openChat ?: return failure("I can't open a chat from this call.", OPEN_CHAT, WHEN_IDLE)
+        val hit = runCatching { lookup.find(words, 1).firstOrNull() }.getOrNull()
+            ?: return ToolOutcome(
+                buildJsonObject {
+                    put("status", "empty")
+                    put("message", "I couldn't find that chat.")
+                },
+                WHEN_IDLE,
+            )
+        open(hit.id, hit.title)
+        return ToolOutcome(
+            buildJsonObject {
+                put("status", "opening")
+                put("chat", hit.id)
+                put("message", "Opening \"${hit.title.take(MAX_JOB_CHARS)}\". The call ends as it opens.")
             },
             WHEN_IDLE,
         )
@@ -683,6 +729,7 @@ class VoiceToolBridge(
         const val END_CONVERSATION = "end_conversation"
         const val SHOW_ON_SCREEN = "show_on_screen"
         const val CALL_ME_WHEN_DONE = "call_me_when_done"
+        const val OPEN_CHAT = "open_chat"
 
         /** A card is read at a glance, beside a moving call screen: a title and a dozen short lines at most. */
         const val MAX_CARD_TITLE_CHARS = 80

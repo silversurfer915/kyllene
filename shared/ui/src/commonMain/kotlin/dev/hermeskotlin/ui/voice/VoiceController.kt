@@ -98,6 +98,8 @@ data class VoiceChatState(
     val bargeIn: Boolean = false,
     /** Something the voice put on the screen during the call, for what's better seen than heard. */
     val card: CallCard? = null,
+    /** A chat the voice asked to open: the call ends and that chat comes up. */
+    val openChat: Pair<String, String>? = null,
 )
 
 /** A card drawn on the call's screen: the voice's `show_on_screen`. Shown until it's replaced or hidden. */

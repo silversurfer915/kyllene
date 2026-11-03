@@ -123,6 +123,7 @@ private class GeminiLiveAdapter(
             endCall = { endAfterGoodbye() },
             showCard = { title, body -> sendCard(title, body) },
             whenDone = { reason -> ringWhenDone(chat, reason) },
+            openChat = { id, title -> sendOpenChat(id, title) },
         )
     }
 
@@ -135,6 +136,21 @@ private class GeminiLiveAdapter(
                         put("type", "screen.card")
                         put("title", title)
                         put("body", body)
+                    }.toString(),
+                )
+            }
+        }
+    }
+
+    /** Asks the call's UI to bring another chat up; the call ends there. */
+    private fun sendOpenChat(id: String, title: String) {
+        scope.launch {
+            runCatching {
+                frames.send(
+                    buildJsonObject {
+                        put("type", "screen.open_chat")
+                        put("chat", id)
+                        put("title", title)
                     }.toString(),
                 )
             }
