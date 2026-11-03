@@ -17,3 +17,6 @@ keystore.properties
 
 # Build logs from local runs
 *.log
+
+# CI workflows stay local: the gh token here has no workflow scope
+.github/workflows/
