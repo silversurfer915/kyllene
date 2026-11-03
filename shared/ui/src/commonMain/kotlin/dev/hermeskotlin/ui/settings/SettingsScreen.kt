@@ -119,6 +119,7 @@ import com.composables.icons.lucide.LayoutGrid
 import com.composables.icons.lucide.Lightbulb
 import com.composables.icons.lucide.Lock
 import com.composables.icons.lucide.LogOut
+import com.composables.icons.lucide.Github
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.MessageCircle
 import com.composables.icons.lucide.MessageSquarePlus
@@ -831,10 +832,10 @@ internal fun SettingsView(
                     Divider()
                     val uriHandler = LocalUriHandler.current
                     NavRow(
-                        title = "Join the Discord",
-                        detail = "Get help, report bugs, suggest features and hear about new releases.",
-                        icon = Lucide.MessagesSquare,
-                        onClick = { uriHandler.openUri(DISCORD_INVITE) },
+                        title = "Kyllene on GitHub",
+                        detail = "Source, releases and issues. Report a bug or ask for a feature there.",
+                        icon = Lucide.Github,
+                        onClick = { uriHandler.openUri(GITHUB_REPO) },
                     )
                 }
             } }
@@ -862,8 +863,8 @@ internal fun SettingsView(
     }
 }
 
-/** The Kyllene community server; the invite never expires. */
-private const val DISCORD_INVITE = "https://discord.gg/wCtyvQ3KcM"
+/** Where Kyllene is built, released and tracked. */
+private const val GITHUB_REPO = "https://github.com/silversurfer915/kyllene"
 
 /** The Phone tools row's line: off, or how many tools the agent may use. */
 private fun phoneToolsSummary(settings: AppSettings): String {
