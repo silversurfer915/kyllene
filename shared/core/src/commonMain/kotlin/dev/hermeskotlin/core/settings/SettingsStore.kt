@@ -1,0 +1,225 @@
+package dev.hermeskotlin.core.settings
+
+import dev.hermeskotlin.core.network.HermesJson
+import dev.hermeskotlin.core.storage.KeyValueStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
+
+enum class ThemeMode { System, Light, Dark }
+
+/** The accent [AppSettings.accent] starts with: Desktop's blue. */
+const val DEFAULT_ACCENT = "Blue"
+
+/** How much bigger or smaller than the system font size the app draws text. */
+enum class TextSize(val scale: Float) {
+    Small(0.9f),
+    Default(1f),
+    Large(1.15f),
+    Largest(1.3f),
+}
+
+/** How much of the chat background shows through: [veil] is how opaque the app's background color lies over it. */
+enum class WallpaperStrength(val veil: Float) {
+    Faint(0.88f),
+    Medium(0.75f),
+    Strong(0.55f),
+}
+
+/**
+ * How long a voice chat waits after you stop talking before it sends. Desktop's chat uses 1.25 s
+ * and the terminal 3 s; on a phone people pause mid-thought, so the default sits between.
+ */
+enum class VoicePause(val millis: Long) {
+    Short(1_250),
+    Normal(2_000),
+    Long(3_000),
+}
+
+/** The voice a Gemini Live call speaks with: Google's prebuilt names, spelled as the API takes them. */
+enum class GeminiVoice(val wire: String) {
+    Aoede("Aoede"),
+    Puck("Puck"),
+    Charon("Charon"),
+    Kore("Kore"),
+    Fenrir("Fenrir"),
+    Leda("Leda"),
+    Orus("Orus"),
+    Zephyr("Zephyr"),
+}
+
+/**
+ * Who writes down dictation: the phone's own speech recognizer ([Device]: words appear as you talk, and
+ * nothing is sent anywhere until you send the message), or the profile's speech-to-text on the gateway
+ * ([Gateway]: the recording is uploaded once you stop). Device falls back to the gateway on a phone
+ * without a recognizer.
+ */
+enum class DictationEngine { Device, Gateway }
+
+/**
+ * What a message sent while a reply is running does: [Steer] slips it into the running turn (the model
+ * reads it after its current tool call), [Queue] holds it for the next turn, [StopAndSend] stops the
+ * reply and sends it as a fresh turn.
+ */
+enum class RunningSend { Steer, Queue, StopAndSend }
+
+/** App-side preferences, kept on the device (not on the gateway). New fields need defaults. */
+@Serializable
+data class AppSettings(
+    val theme: ThemeMode = ThemeMode.System,
+    /** Dark mode uses true black backgrounds (OLED). */
+    val pureBlack: Boolean = false,
+    /**
+     * The accent preset's name (the design system's `AccentPalette`). A string, not an enum, so a preset that a
+     * newer version added reads as the default here instead of making the whole stored settings unreadable.
+     */
+    val accent: String = DEFAULT_ACCENT,
+    /**
+     * The colored glows: behind the top of each screen; under prompts, the app mark, Send, New chat, the main
+     * buttons and live subagent cards; on the voice screen; and the assistant edge's halo. Off, all flat.
+     */
+    val glow: Boolean = true,
+    val textSize: TextSize = TextSize.Default,
+    /** How strongly the chat background (kept by [WallpaperStore]) shows, when there is one. */
+    val wallpaperStrength: WallpaperStrength = WallpaperStrength.Faint,
+    val showReasoning: Boolean = true,
+    val showToolActivity: Boolean = true,
+    /** Tokens each reply took, under it. */
+    val showUsage: Boolean = true,
+    /** The time under each prompt and finished reply. */
+    val showTimestamps: Boolean = true,
+    /** Long lines in code blocks wrap; off, a block scrolls sideways. */
+    val wrapCode: Boolean = false,
+    /** Show the profile's pet (when the gateway has one on) above the composer. */
+    val showPet: Boolean = true,
+    /** Automatically fetch linked webpages and thumbnails; off until the user opts in. */
+    val showLinkPreviews: Boolean = false,
+    /** The gateway's Next Prompt plugin's suggested next message, over the composer once a turn ends. */
+    val suggestedReplies: Boolean = true,
+    val voicePause: VoicePause = VoicePause.Normal,
+    /** The voice a Gemini Live call speaks with (a prebuilt name; a newer one reads as the default). */
+    val geminiVoice: String = GeminiVoice.Aoede.wire,
+    /** Default call destination per saved gateway; absence starts a new conversation in its selected profile. */
+    val callTargets: Map<String, CallTarget> = emptyMap(),
+    /** The mic for dictation in the composer and on an empty chat. Off, it goes, and the model name gets the room. */
+    val dictation: Boolean = true,
+    val dictationEngine: DictationEngine = DictationEngine.Device,
+    /** What tapping Send does while a reply is running; a long press on Send picks another for one message. */
+    val runningSend: RunningSend = RunningSend.Steer,
+    /**
+     * What every new chat started here tells the agent first, out of sight (`putStartInstruction`), such as "I'm on
+     * my phone: keep replies short". Blank: nothing. Chats already going keep what they started with.
+     */
+    val startInstruction: String = "",
+    /** Notify when a turn finishes while the app is in the background. */
+    val notifyReplies: Boolean = true,
+    /** Notify when the agent waits on an approval or a question while the app is in the background. */
+    val notifyRequests: Boolean = true,
+    /**
+     * Replies and requests in chats other than the one on screen notify while Herald is open too, as they do
+     * in the background.
+     */
+    val notifyOtherChatsInApp: Boolean = false,
+    /**
+     * While in a chat, Herald tells of the other chats: a dot on Sessions, the banner, Next and the buzz. Off by
+     * default; off, nothing watches them and the gateway's live list isn't polled for them.
+     */
+    val otherChatsAlerts: Boolean = false,
+    /** With [otherChatsAlerts], a strip over the chat when another chat replies or starts waiting on the user. */
+    val otherChatsBanner: Boolean = true,
+    /** With [otherChatsAlerts], a short buzz when another chat starts waiting on the user (not for replies). */
+    val otherChatsVibrate: Boolean = true,
+    /**
+     * Bot messages reach the phone off the gateway's network too, end-to-end encrypted through ntfy (herald-push).
+     * The one thing that keeps Herald up in the background, with a quiet notification.
+     */
+    val pushAnywhere: Boolean = false,
+    /** The agent may use tools on this phone ([phoneToolsOn]); off, none of them, whatever their own switches say. */
+    val phoneTools: Boolean = false,
+    /** The phone tools switched on, by gateway name (`PhoneTool.id`). Each starts off. */
+    val phoneToolsOn: List<String> = emptyList(),
+    /**
+     * An approval or a question from a chat out of sight rings like an incoming call instead of a plain notification.
+     * Only with [phoneTools] on (see [ringsForAnswers]). It only ever rings this phone: the agent never calls anyone.
+     */
+    val phoneRings: Boolean = false,
+    /** Answering such a call puts Hermes on the line to ask it aloud, with no chat on screen; off, Answer opens the chat. */
+    val phoneRingsTalk: Boolean = true,
+    /**
+     * Such a call rings Herald on the watch too, where answering puts Hermes on the line in a live call. Only when the
+     * gateway talks live, since the watch has no chat to open instead.
+     */
+    val watchRings: Boolean = true,
+    /**
+     * Nothing rings from [quietFrom] to [quietUntil], minutes into the day on this phone's clock: the agent's calls
+     * don't get through, and an approval or a question is the usual notification (see `quietNow`).
+     */
+    val quietHours: Boolean = false,
+    val quietFrom: Int = 22 * 60,
+    val quietUntil: Int = 7 * 60,
+    /** Ask GitHub, where the app is published, whether a newer release is out. */
+    val checkForUpdates: Boolean = true,
+    /** Ask for a fingerprint, face or the screen lock when Herald opens, and keep it out of Recents. */
+    val appLock: Boolean = false,
+    /** Models starred in the model picker (`provider/id`, see `ModelOption.starKey`), first starred first. */
+    val starredModels: List<String> = emptyList(),
+    /** Models last picked in the model picker (`provider/id`), newest first. */
+    val recentModels: List<String> = emptyList(),
+    /** The sidebar's Pinned section is folded: only pinned chats that are open or have something going on show. */
+    val pinnedCollapsed: Boolean = false,
+    /** The sidebar's Threads section is folded the same way: only threads that are open or have something going on show. */
+    val threadsCollapsed: Boolean = false,
+    /** The sidebar shows its projects as one button that opens a list, not a row of chips that scrolls sideways. */
+    val projectsAsDropdown: Boolean = false,
+    /** Desktop: closing the window keeps Herald in the tray, still telling of replies and questions. */
+    val closeToTray: Boolean = false,
+    /** Desktop: Ctrl+Shift+Space from any app opens a small composer that sends to the open chat. */
+    val quickEntry: Boolean = true,
+    /** Desktop: how big everything is drawn, in percent (Ctrl+= and Ctrl+-). */
+    val zoom: Int = 100,
+    /** Desktop: the sidebar's width in dp, as its edge was last dragged to. */
+    val sidebarWidth: Int = 304,
+)
+
+/** The [AppSettings.startInstruction] a new chat starts with, trimmed; null when there is none or the settings aren't read yet. */
+fun SettingsStore.startInstruction(): String? = settings.value?.startInstruction?.trim()?.takeIf { it.isNotEmpty() }
+
+/**
+ * Holds [AppSettings]: null until the stored copy is read, so the first frame can wait for the
+ * right theme instead of flashing the wrong one. Changes apply at once and are saved behind.
+ */
+class SettingsStore(private val store: KeyValueStore, private val scope: CoroutineScope) {
+
+    private val _settings = MutableStateFlow<AppSettings?>(null)
+    val settings: StateFlow<AppSettings?> = _settings.asStateFlow()
+
+    private val writes = Mutex()
+
+    init {
+        scope.launch {
+            val stored = store.get(KEY)?.let { runCatching { HermesJson.decodeFromString(AppSettings.serializer(), it) }.getOrNull() }
+            // An update made before the read finished wins over the stored copy.
+            _settings.compareAndSet(null, stored ?: AppSettings())
+        }
+    }
+
+    fun update(transform: (AppSettings) -> AppSettings) {
+        val next = _settings.updateAndGet { transform(it ?: AppSettings()) } ?: return
+        scope.launch {
+            writes.withLock {
+                // Only the newest value matters if several writes queue up.
+                if (_settings.value == next) store.put(KEY, HermesJson.encodeToString(AppSettings.serializer(), next))
+            }
+        }
+    }
+
+    private companion object {
+        const val KEY = "settings.v1"
+    }
+}

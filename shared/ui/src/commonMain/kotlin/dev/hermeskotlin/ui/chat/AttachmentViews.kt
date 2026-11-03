@@ -1,0 +1,184 @@
+package dev.hermeskotlin.ui.chat
+
+import dev.hermeskotlin.designsystem.components.Tooltip
+import dev.hermeskotlin.designsystem.components.handCursor
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.composables.icons.lucide.Camera
+import com.composables.icons.lucide.File
+import com.composables.icons.lucide.FileText
+import com.composables.icons.lucide.Image as ImageIcon
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Paperclip
+import com.composables.icons.lucide.X
+import com.composeunstyled.Text
+import com.composeunstyled.UnstyledButton
+import com.composeunstyled.UnstyledIcon
+import com.composeunstyled.theme.Theme
+import dev.hermeskotlin.designsystem.rememberHoverIndication
+import dev.hermeskotlin.core.chat.AttachmentKind
+import dev.hermeskotlin.core.chat.OutgoingAttachment
+import dev.hermeskotlin.core.chat.ShownAttachment
+import dev.hermeskotlin.designsystem.bodySmall
+import dev.hermeskotlin.designsystem.caption
+import dev.hermeskotlin.designsystem.colors
+import dev.hermeskotlin.designsystem.components.BottomSheet
+import dev.hermeskotlin.designsystem.components.SheetAction
+import dev.hermeskotlin.designsystem.components.SheetHeader
+import dev.hermeskotlin.designsystem.radii
+import dev.hermeskotlin.designsystem.radiusMedium
+import dev.hermeskotlin.designsystem.stroke
+import dev.hermeskotlin.designsystem.surface
+import dev.hermeskotlin.designsystem.text as textColor
+import dev.hermeskotlin.designsystem.textTertiary
+import dev.hermeskotlin.designsystem.typography
+
+/** The files waiting in the composer, each with a remove button. */
+@Composable
+internal fun ComposerTray(attachments: List<OutgoingAttachment>, onRemove: (String) -> Unit) {
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()).padding(start = 4.dp, end = 4.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        attachments.forEach { attachment ->
+            Box {
+                AttachmentTile(attachment.name, attachment.kind, attachment.thumbnail, size = 64.dp)
+                // Named on hover on the desktop, as an icon button is.
+                Tooltip("Remove", Modifier.align(Alignment.TopEnd)) { UnstyledButton(
+                    onClick = { onRemove(attachment.id) },
+                    modifier = Modifier
+                        .padding(4.dp)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.6f)),
+                    indication = rememberHoverIndication(Color.White),
+                ) {
+                    UnstyledIcon(Lucide.X, contentDescription = "Remove ${attachment.name}", tint = Color.White, modifier = Modifier.size(14.dp))
+                } }
+            }
+        }
+    }
+}
+
+/** What went out with a prompt, above its bubble; pictures open full size. */
+@Composable
+internal fun SentAttachments(attachments: List<ShownAttachment>) {
+    val load = LocalMediaLoader.current
+    val open = LocalOpenImage.current
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        attachments.forEach { attachment ->
+            // History knows only where the gateway keeps an image; fetch it to show the same thumbnail.
+            val bytes by produceState(attachment.thumbnail, attachment.gatewayPath) {
+                if (value == null) attachment.gatewayPath?.let { value = load(it) }
+            }
+            val viewable = attachment.kind == AttachmentKind.Image && bytes != null
+            Box(
+                Modifier.clip(RoundedCornerShape(Theme[radii][radiusMedium])).handCursor(viewable).clickable(enabled = viewable) {
+                    open(ViewerImage(attachment.name, source = attachment.gatewayPath, bytes = attachment.original))
+                },
+            ) {
+                AttachmentTile(attachment.name, attachment.kind, bytes, size = 96.dp, keepShape = true)
+            }
+        }
+    }
+}
+
+/**
+ * A photo thumbnail, or for files (and history images without bytes) an icon card with the name. With
+ * [keepShape] the photo is [size] tall and as wide as its shape makes it (a wide strip stays a strip),
+ * trimmed only past [MAX_TILE_RATIO]; otherwise it's a [size] square.
+ */
+@Composable
+private fun AttachmentTile(name: String, kind: AttachmentKind, thumbnail: ByteArray?, size: Dp, keepShape: Boolean = false) {
+    val shape = RoundedCornerShape(Theme[radii][radiusMedium])
+    val bitmap = thumbnail?.let { rememberImageBitmap(it) }
+    if (bitmap != null) {
+        val ratio = if (keepShape) (bitmap.width.toFloat() / bitmap.height).coerceIn(1 / MAX_TILE_RATIO, MAX_TILE_RATIO) else 1f
+        Image(
+            bitmap = bitmap,
+            contentDescription = name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.height(size).aspectRatio(ratio).clip(shape).border(1.dp, Theme[colors][stroke], shape),
+        )
+        return
+    }
+    Row(
+        Modifier
+            .clip(shape)
+            .background(Theme[colors][surface])
+            .border(1.dp, Theme[colors][stroke], shape)
+            .widthIn(max = 220.dp)
+            .padding(horizontal = 12.dp, vertical = if (size > 64.dp) 12.dp else 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        UnstyledIcon(kind.icon, contentDescription = null, tint = Theme[colors][textTertiary], modifier = Modifier.size(22.dp))
+        Column(Modifier.padding(end = if (size > 64.dp) 0.dp else 18.dp)) {
+            Text(name, style = Theme[typography][bodySmall], color = Theme[colors][textColor], maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(kind.label, style = Theme[typography][caption], color = Theme[colors][textTertiary], maxLines = 1)
+        }
+    }
+}
+
+/** How far from square a sent photo's tile goes before it's trimmed: a 3:1 strip, or a 1:3 tall one. */
+private const val MAX_TILE_RATIO = 3f
+
+private val AttachmentKind.icon: ImageVector
+    get() = when (this) {
+        AttachmentKind.Image -> Lucide.ImageIcon
+        AttachmentKind.Pdf -> Lucide.FileText
+        AttachmentKind.File -> Lucide.File
+    }
+
+private val AttachmentKind.label: String
+    get() = when (this) {
+        AttachmentKind.Image -> "Image"
+        AttachmentKind.Pdf -> "PDF"
+        AttachmentKind.File -> "File"
+    }
+
+/** The + button's choices. */
+@Composable
+internal fun AttachSheet(visible: Boolean, onDismiss: () -> Unit, picker: AttachmentPicker, subtitle: String = "Up to ${OutgoingAttachment.MAX_COUNT} photos or files, ${OutgoingAttachment.MAX_BYTES / (1024 * 1024)} MB each") {
+    fun pick(action: () -> Unit) {
+        onDismiss()
+        action()
+    }
+    BottomSheet(visible = visible, onDismiss = onDismiss) {
+        SheetHeader("Add to message", subtitle)
+        SheetAction("Photos", Lucide.ImageIcon, onClick = { pick(picker::pickPhotos) })
+        SheetAction("Camera", Lucide.Camera, onClick = { pick(picker::takePhoto) })
+        SheetAction("Files", Lucide.Paperclip, onClick = { pick(picker::pickFiles) })
+    }
+}

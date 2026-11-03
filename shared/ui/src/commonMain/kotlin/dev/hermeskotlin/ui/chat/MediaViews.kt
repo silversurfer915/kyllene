@@ -1,0 +1,392 @@
+package dev.hermeskotlin.ui.chat
+
+import dev.hermeskotlin.ui.fullScreenDialogProperties
+import dev.hermeskotlin.ui.tapVerb
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import com.composables.icons.lucide.Download
+import com.composables.icons.lucide.File
+import com.composables.icons.lucide.Image
+import com.composables.icons.lucide.ImageOff
+import com.composables.icons.lucide.Lucide
+import dev.hermeskotlin.ui.shareIcon
+import dev.hermeskotlin.ui.shareLabel
+import com.composables.icons.lucide.X
+import com.composeunstyled.Text
+import com.composeunstyled.UnstyledIcon
+import com.composeunstyled.theme.Theme
+import dev.hermeskotlin.core.chat.ReplyMedia
+import dev.hermeskotlin.designsystem.bodySmall
+import dev.hermeskotlin.designsystem.caption
+import dev.hermeskotlin.designsystem.colors
+import dev.hermeskotlin.designsystem.components.IconButton
+import dev.hermeskotlin.designsystem.components.Spinner
+import dev.hermeskotlin.designsystem.components.handCursor
+import dev.hermeskotlin.designsystem.label
+import dev.hermeskotlin.designsystem.radii
+import dev.hermeskotlin.designsystem.radiusMedium
+import dev.hermeskotlin.designsystem.stroke
+import dev.hermeskotlin.designsystem.surface
+import dev.hermeskotlin.designsystem.text as textColor
+import dev.hermeskotlin.designsystem.textSecondary
+import dev.hermeskotlin.designsystem.textTertiary
+import dev.hermeskotlin.designsystem.typography
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+
+/** Loads a picture or file the chat shows by source (see `ChatViewModel.loadMedia`); null when unavailable. */
+internal val LocalMediaLoader = staticCompositionLocalOf<suspend (String) -> ByteArray?> { { null } }
+
+/** Opens the full-screen viewer for a picture. */
+internal val LocalOpenImage = staticCompositionLocalOf<(ViewerImage) -> Unit> { {} }
+
+/**
+ * What the viewer shows: bytes already at hand, a source to load them from, or its own [fetch] (a picture a
+ * reply linked to, read through the chat's profile).
+ */
+internal class ViewerImage(
+    val name: String,
+    val source: String? = null,
+    val bytes: ByteArray? = null,
+    val fetch: (suspend () -> FileDownload)? = null,
+)
+
+/** The pictures and files a reply delivered, under its text. */
+@Composable
+internal fun ReplyMediaList(media: List<ReplyMedia>) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Keyed, so a picture's loaded bytes never show under another one when the list changes.
+        media.forEach { item -> key(item.source) {
+            val file = widgetFile(item)
+            val files = LocalWidgetFiles.current
+            when {
+                file != null && files != null -> InlineWidget(item, file, files)
+                item.isImage -> ReplyImage(item)
+                else -> ReplyFile(item)
+            }
+        } }
+    }
+}
+
+@Composable
+private fun ReplyImage(item: ReplyMedia) {
+    val load = LocalMediaLoader.current
+    val open = LocalOpenImage.current
+    val shape = RoundedCornerShape(Theme[radii][radiusMedium])
+    // A picture from the web waits for a tap: fetching it tells that site you read the reply, and a
+    // reply steered by something the agent read could put data in the address. A generated picture's
+    // address came from the image tool, so it loads like on Desktop.
+    val remoteHost = remember(item.source) { webHost(item.source).takeUnless { item.generated } }
+    var allowed by remember(item.source) { mutableStateOf(remoteHost == null) }
+    if (!allowed) {
+        Row(
+            Modifier
+                .widthIn(max = 420.dp)
+                .fillMaxWidth()
+                .clip(shape)
+                .border(1.dp, Theme[colors][stroke], shape)
+                .background(Theme[colors][surface])
+                .handCursor()
+                .clickable { allowed = true }
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            UnstyledIcon(Lucide.Image, contentDescription = null, tint = Theme[colors][textTertiary], modifier = Modifier.size(18.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Picture from $remoteHost", style = Theme[typography][bodySmall], color = Theme[colors][textSecondary])
+                Text("$tapVerb to load it from that site", style = Theme[typography][caption], color = Theme[colors][textTertiary])
+            }
+        }
+        return
+    }
+    // Bumped by a tap on a failed card, to ask again (a dropped link, a file not there yet).
+    var attempt by remember(item.source) { mutableIntStateOf(0) }
+    var failed by remember(item.source) { mutableStateOf(false) }
+    val bytes by produceState<ByteArray?>(null, item.source, attempt) {
+        failed = false
+        // A gateway that won't hand the file over shouldn't leave a spinner forever.
+        value = withTimeoutOrNull(20_000) { load(item.source) }
+        if (value == null) failed = true
+    }
+    val decoded = bytes?.let { rememberDecodedImage(it, maxEdge = INLINE_EDGE) }
+    val bitmap = decoded?.bitmap
+    Box(
+        Modifier
+            .widthIn(max = 420.dp)
+            .fillMaxWidth()
+            .clip(shape)
+            .border(1.dp, Theme[colors][stroke], shape)
+            .background(Theme[colors][surface])
+            .handCursor(bitmap != null || failed)
+            .clickable(enabled = bitmap != null || failed) {
+                if (bitmap != null) open(ViewerImage(item.name, source = item.source)) else attempt++
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            bitmap != null -> Image(
+                bitmap = bitmap,
+                contentDescription = item.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1)).heightIn(max = 480.dp),
+            )
+            failed || decoded?.decoding == false -> Row(
+                Modifier.padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                UnstyledIcon(Lucide.ImageOff, contentDescription = null, tint = Theme[colors][textTertiary], modifier = Modifier.size(18.dp))
+                Column {
+                    Text("Couldn't load ${item.name}", style = Theme[typography][bodySmall], color = Theme[colors][textTertiary])
+                    if (failed) Text("$tapVerb to try again", style = Theme[typography][caption], color = Theme[colors][textTertiary])
+                }
+            }
+            else -> Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) { Spinner() }
+        }
+    }
+}
+
+/** The site an `http(s)://` picture would be fetched from; null for the gateway's own files and inline data. */
+internal fun webHost(source: String): String? {
+    if (!source.startsWith("http://") && !source.startsWith("https://")) return null
+    return source.substringAfter("://").substringBefore('/').substringBefore('?').substringBefore('#').substringAfterLast('@').ifEmpty { null } ?: "the web"
+}
+
+/** A delivered file: its name, with Save and Share. */
+@Composable
+internal fun ReplyFile(item: ReplyMedia, download: (suspend () -> FileDownload)? = null) {
+    val load = LocalMediaLoader.current
+    val actions = rememberMediaActions()
+    val notify = LocalNotice.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(Theme[radii][radiusMedium])
+
+    fun withBytes(action: suspend (ByteArray) -> Unit) {
+        if (busy) return
+        busy = true
+        scope.launch {
+            try {
+                if (download != null) {
+                    when (val result = download()) {
+                        is FileDownload.Ready -> action(result.bytes)
+                        is FileDownload.Failed -> notify(result.message)
+                    }
+                } else {
+                    val bytes = load(item.source)
+                    if (bytes == null) notify("Couldn't get ${item.name} from the gateway.") else action(bytes)
+                }
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    Row(
+        Modifier
+            .widthIn(max = 420.dp)
+            .fillMaxWidth()
+            .clip(shape)
+            .border(1.dp, Theme[colors][stroke], shape)
+            .background(Theme[colors][surface])
+            .padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        UnstyledIcon(Lucide.File, contentDescription = null, tint = Theme[colors][textTertiary], modifier = Modifier.size(22.dp))
+        Column(Modifier.weight(1f)) {
+            Text(item.name, style = Theme[typography][label], color = Theme[colors][textColor], maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(item.name.substringAfterLast('.', "file").uppercase(), style = Theme[typography][caption], color = Theme[colors][textTertiary])
+        }
+        if (busy) {
+            Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { Spinner(Modifier.size(18.dp)) }
+        } else {
+            IconButton(Lucide.Download, contentDescription = "Save ${item.name}", onClick = { withBytes { notify(actions.save(it, item.name)) } })
+            IconButton(shareIcon, contentDescription = "$shareLabel: ${item.name}", onClick = { withBytes { actions.share(it, item.name) } })
+        }
+    }
+}
+
+/** Shows a short message over the chat (a save result, a failed download). */
+internal val LocalNotice = staticCompositionLocalOf<(String) -> Unit> { {} }
+
+/** Full-screen picture with pinch-zoom (double-tap resets), Save and Share. */
+@Composable
+internal fun ImageViewer(image: ViewerImage, onDismiss: () -> Unit) {
+    val load = LocalMediaLoader.current
+    val actions = rememberMediaActions()
+    val scope = rememberCoroutineScope()
+    // Why the picture couldn't be had, shown in place of a spinner that would never stop.
+    var failed by remember(image) { mutableStateOf<String?>(null) }
+    val bytes by produceState(image.bytes, image) {
+        if (value != null) return@produceState
+        val fetch = image.fetch
+        if (fetch != null) {
+            when (val result = fetch()) {
+                is FileDownload.Ready -> value = result.bytes
+                is FileDownload.Failed -> failed = result.message
+            }
+        } else {
+            value = image.source?.let { load(it) }
+            if (value == null) failed = "Couldn't load this picture."
+        }
+    }
+    var notice by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(notice) {
+        if (notice != null) {
+            delay(2_500)
+            notice = null
+        }
+    }
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    val transform = rememberTransformableState { zoom, pan, _ ->
+        scale = (scale * zoom).coerceIn(1f, 6f)
+        offset = if (scale == 1f) Offset.Zero else offset + pan
+    }
+
+    Dialog(onDismissRequest = onDismiss, properties = fullScreenDialogProperties()) {
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            val decoded = bytes?.let { rememberDecodedImage(it, maxEdge = VIEWER_EDGE) }
+            val bitmap = decoded?.bitmap
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = image.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures(onDoubleTap = {
+                                scale = if (scale > 1f) 1f else 2.5f
+                                offset = Offset.Zero
+                            })
+                        }
+                        .transformable(transform)
+                        .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offset.x, translationY = offset.y),
+                )
+            } else {
+                Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+                    val error = failed ?: "Couldn't show this picture.".takeIf { decoded?.decoding == false }
+                    if (error != null) {
+                        Text(error, style = Theme[typography][bodySmall], color = Color.White, textAlign = TextAlign.Center)
+                    } else {
+                        Spinner()
+                    }
+                }
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(Lucide.X, contentDescription = "Close", onClick = onDismiss, tint = Color.White)
+                Text(
+                    image.name,
+                    style = Theme[typography][label],
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                )
+                val ready = bytes
+                IconButton(
+                    Lucide.Download,
+                    contentDescription = "Save",
+                    onClick = { ready?.let { scope.launch { notice = actions.save(it, image.name.withImageExtension(it)) } } },
+                    enabled = ready != null,
+                    tint = Color.White,
+                )
+                IconButton(
+                    shareIcon,
+                    contentDescription = shareLabel,
+                    onClick = { ready?.let { actions.share(it, image.name.withImageExtension(it)) } },
+                    enabled = ready != null,
+                    tint = Color.White,
+                )
+            }
+            notice?.let {
+                Text(
+                    it,
+                    style = Theme[typography][bodySmall],
+                    color = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(24.dp)
+                        .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(Theme[radii][radiusMedium]))
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                )
+            }
+        }
+    }
+}
+
+/** History and replies don't always carry an extension ("Image"); sniff one so other apps open the file. */
+private fun String.withImageExtension(bytes: ByteArray): String {
+    if ('.' in this) return this
+    val ext = when {
+        bytes.size > 3 && bytes[0] == 0x89.toByte() && bytes[1] == 'P'.code.toByte() -> "png"
+        bytes.size > 3 && bytes[0] == 'G'.code.toByte() && bytes[1] == 'I'.code.toByte() -> "gif"
+        bytes.size > 11 && bytes[8] == 'W'.code.toByte() && bytes[9] == 'E'.code.toByte() -> "webp"
+        else -> "jpg"
+    }
+    return "$this.$ext"
+}
+
+/** Long edge of a reply's inline picture: sharp on a phone, light on memory. */
+private const val INLINE_EDGE = 1280
+
+/** Long edge in the viewer, enough to zoom into text. */
+private const val VIEWER_EDGE = 3072

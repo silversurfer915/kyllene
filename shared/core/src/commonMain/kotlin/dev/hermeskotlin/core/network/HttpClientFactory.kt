@@ -1,0 +1,51 @@
+package dev.hermeskotlin.core.network
+
+import dev.hermeskotlin.core.auth.NativeTokens
+import dev.hermeskotlin.core.auth.nativeBearer
+import dev.hermeskotlin.core.gateway.AccessTokens
+import dev.hermeskotlin.core.gateway.cloudflareAccess
+import io.ktor.client.HttpClient
+import io.ktor.client.HttpClientConfig
+import io.ktor.client.engine.HttpClientEngine
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.cookies.CookiesStorage
+import io.ktor.client.plugins.cookies.HttpCookies
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.json.Json
+
+val HermesJson: Json = Json {
+    ignoreUnknownKeys = true
+    explicitNulls = false
+    encodeDefaults = true
+}
+
+/**
+ * Shared Ktor client. [engine] is injectable for tests; otherwise the platform engine (OkHttp on Android)
+ * is used. With [cookies], the dashboard session cookies are sent on every HTTP call and WS upgrade; with
+ * [access], so are the Cloudflare Access service tokens, each to its own host; with [bearer], the browser
+ * sign-in's access tokens, each to its own gateway.
+ */
+fun createHttpClient(
+    engine: HttpClientEngine? = null,
+    cookies: CookiesStorage? = null,
+    access: AccessTokens? = null,
+    bearer: NativeTokens? = null,
+): HttpClient {
+    val config: HttpClientConfig<*>.() -> Unit = {
+        expectSuccess = false
+        // The dashboard answers some calls (logout, unauthenticated HTML) with redirects to /login.
+        followRedirects = false
+        install(ContentNegotiation) { json(HermesJson) }
+        install(HttpTimeout) {
+            connectTimeoutMillis = 15_000
+            requestTimeoutMillis = 30_000
+        }
+        install(WebSockets)
+        if (cookies != null) install(HttpCookies) { storage = cookies }
+        if (access != null) install(cloudflareAccess(access))
+        if (bearer != null) install(nativeBearer(bearer))
+    }
+    return if (engine != null) HttpClient(engine, config) else HttpClient(config)
+}

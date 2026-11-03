@@ -1,0 +1,129 @@
+import java.util.Properties
+
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.compose.compiler)
+}
+
+// A release sets these from its tag (-PappVersion=0.2.0) and repo (-PreleasesRepo=owner/name); see
+// .github/workflows/release.yml. A local build is 0.1.0 and never looks for updates.
+val appVersion = (findProperty("appVersion") as String?)?.removePrefix("v") ?: "0.1.0"
+val releasesRepo = (findProperty("releasesRepo") as String?).orEmpty()
+
+android {
+    namespace = "dev.hermeskotlin.android"
+    compileSdk {
+        version = release(libs.versions.android.compileSdk.get().toInt()) {
+            minorApiLevel = libs.versions.android.compileSdkMinor.get().toInt()
+        }
+    }
+
+    defaultConfig {
+        // The installed identity; the Kotlin packages keep their original dev.hermeskotlin name.
+        applicationId = "com.hermes.kyllene"
+        minSdk = libs.versions.android.minSdk.get().toInt()
+        targetSdk = libs.versions.android.targetSdk.get().toInt()
+        // 1.2.3 → 10203: each release installs over the last, as long as the tags only go up.
+        val (major, minor, patch) = appVersion.substringBefore('-').split('.').map { it.toInt() }.plus(listOf(0, 0)).take(3)
+        require(minor < 100 && patch < 100) { "appVersion $appVersion: minor and patch must stay under 100" }
+        versionCode = major * 10_000 + minor * 100 + patch
+        versionName = appVersion
+        buildConfigField("String", "RELEASES_REPO", "\"$releasesRepo\"")
+    }
+
+    // Release signing comes from an untracked keystore.properties at the repo root
+    // (storeFile, storePassword, keyAlias, keyPassword); without it release builds use the debug key.
+    val keystore = rootProject.file("keystore.properties").takeIf { it.exists() }?.let { file ->
+        Properties().apply { file.inputStream().use(::load) }
+    }
+    // A published APK signed with a debug key wouldn't install over the real one, so a release fails instead.
+    // It fails when an APK is packaged, not when this project is configured: the desktop release sets releasesRepo
+    // too, has no Android key, and configures every project.
+    if (keystore == null && releasesRepo.isNotEmpty()) {
+        val missing = "releasesRepo is set but keystore.properties is missing"
+        tasks.configureEach { if (name.startsWith("package")) doFirst { throw GradleException(missing) } }
+    }
+    signingConfigs {
+        if (keystore != null) create("release") {
+            storeFile = file(keystore.getProperty("storeFile"))
+            storePassword = keystore.getProperty("storePassword")
+            keyAlias = keystore.getProperty("keyAlias")
+            keyPassword = keystore.getProperty("keyPassword")
+        }
+    }
+
+    // WebRTC's native library is 7–16 MB per ABI; compressed in the APK it is about a third of that.
+    packaging { jniLibs.useLegacyPackaging = true }
+
+    // A published release also gets one APK per ABI, each with only its own WebRTC library, beside the
+    // universal one; the in-app update offers the one for the device. Other builds stay one APK.
+    splits {
+        abi {
+            isEnable = releasesRepo.isNotEmpty()
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+            isUniversalApk = true
+        }
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    // CI runs lintDebug. Warnings count as errors, and the baseline holds the issues that were there when
+    // lint was added, so any new issue fails the build; regenerate it with :androidApp:updateLintBaseline
+    // after fixing some. Lint sees this module only: the shared KMP modules' one lint task reads just their
+    // test sources, and they turn it off.
+    lint {
+        baseline = file("lint-baseline.xml")
+        abortOnError = true
+        warningsAsErrors = true
+        checkReleaseBuilds = false
+        // Test code isn't shipped, and analysing it was most of lint's time in CI.
+        ignoreTestSources = true
+        disable += setOf(
+            // Only fires on the untracked local.properties that Android Studio writes on Windows.
+            "PropertyEscape",
+            // These change when a library or Android version comes out, not when the code changes.
+            "GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion", "OldTargetApi",
+        )
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        // "Kyllene Dev": a build that installs beside the real app, with its own data and sign-in, for trying work
+        // in progress on a phone without touching the installed app. It's built like a release (R8, not
+        // debuggable), so it scrolls and animates as the real app will; a debuggable Compose build runs far slower.
+        // It keeps the debug key, so each one installs over the last.
+        create("dev") {
+            initWith(getByName("release"))
+            // No id suffix here: this build installs as com.hermes.kyllene, exactly as asked. It no longer
+            // sits beside a release build of the same app — a release of this fork would collide with it.
+            versionNameSuffix = "-dev"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
+    }
+}
+
+dependencies {
+    implementation(projects.shared.ui)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.core.ktx)
+    // Links in replies open in a Custom Tab; App lock asks through BiometricPrompt (needs a FragmentActivity).
+    implementation(libs.androidx.browser)
+    implementation(libs.androidx.biometric)
+    implementation(libs.androidx.fragment)
+    implementation(libs.koin.android)
+    implementation(libs.androidx.health.connect)
+    // The watch companion's link to Herald's Wear OS app (wearApp).
+    implementation(libs.play.services.wearable)
+    implementation(libs.kotlinx.coroutines.play.services)
+    debugImplementation(libs.compose.ui.tooling)
+}

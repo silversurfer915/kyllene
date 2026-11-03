@@ -1,0 +1,79 @@
+plugins {
+    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.room)
+}
+
+kotlin {
+    android {
+        namespace = "dev.hermeskotlin.core"
+        compileSdk {
+            version = release(libs.versions.android.compileSdk.get().toInt()) {
+                minorApiLevel = libs.versions.android.compileSdkMinor.get().toInt()
+            }
+        }
+        minSdk = libs.versions.android.minSdk.get().toInt()
+        withHostTest {}
+    }
+
+    // iOS targets are added here once the Android app is in shape.
+
+    // The desktop app (experimental).
+    jvm()
+
+    sourceSets {
+        // What Android and the desktop share: the JDK's crypto, text and time, jsoup and OkHttp.
+        val jvmShared by creating {
+            dependsOn(commonMain.get())
+            dependencies {
+                implementation(libs.ktor.client.okhttp)
+                implementation(libs.jsoup)
+                implementation(libs.markdown.parser)
+            }
+        }
+        androidMain.get().dependsOn(jvmShared)
+        jvmMain.get().dependsOn(jvmShared)
+        jvmMain.dependencies {
+            implementation(libs.sqlite.bundled)
+            implementation(libs.jna.platform)
+        }
+        commonMain.dependencies {
+            api(libs.kotlinx.coroutines.core)
+            api(libs.kotlinx.serialization.json)
+            api(projects.shared.wearlink)
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.client.websockets)
+            implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.koin.core)
+            implementation(libs.room.runtime)
+        }
+        androidMain.dependencies {
+            implementation(libs.ktor.client.okhttp)
+            implementation(libs.jsoup)
+            implementation(libs.markdown.parser)
+            implementation(libs.koin.android)
+            implementation(libs.androidx.core.ktx)
+            implementation(libs.webrtc.android)
+        }
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
+        }
+    }
+}
+
+dependencies {
+    add("kspAndroid", libs.room.compiler)
+    add("kspJvm", libs.room.compiler)
+}
+
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
+// Lint only ever gets this module's test sources, and the app's lint ignores those (see androidApp).
+tasks.matching { it.name == "lintAnalyzeAndroidHostTest" }.configureEach { enabled = false }

@@ -1,0 +1,215 @@
+package dev.hermeskotlin.core.sessions
+
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
+
+/**
+ * One stored session row as `GET /api/sessions` returns it (hermes_cli/web_routers/sessions.py,
+ * `StoredSessionRow` in tui_gateway/contracts/common.py). Times are epoch seconds.
+ */
+@Serializable
+data class SessionSummary(
+    val id: String,
+    val title: String? = null,
+    val preview: String? = null,
+    val source: String? = null,
+    val model: String? = null,
+    @SerialName("started_at") val startedAt: Double? = null,
+    @SerialName("last_active") val lastActive: Double? = null,
+    @SerialName("message_count") val messageCount: Int = 0,
+    @Serializable(with = LenientBooleanSerializer::class) val pinned: Boolean = false,
+    @Serializable(with = LenientBooleanSerializer::class) val archived: Boolean = false,
+    @Serializable(with = LenientBooleanSerializer::class) @SerialName("is_active") val isActive: Boolean = false,
+    /** Search hits only: the matching message excerpt (FTS5 `snippet()`, `>>>`/`<<<` markers stripped). */
+    val snippet: String? = null,
+    /**
+     * Every stored id of the chat's compression lineage, this row's included (`_lineage_ids`). After `/compress`
+     * the chat goes on under a new id and the list shows that newest one, so an older id still names this chat.
+     */
+    @SerialName("_lineage_ids") val lineageIds: List<String>? = null,
+    /** The folder the chat runs in, when it has one. */
+    val cwd: String? = null,
+    /**
+     * The gateway's read state (`last_read_at` against `last_active`, `SessionDB.session_unread`): set when a client
+     * marked the chat unread, or it had activity after a client last marked it read. False from a gateway without it.
+     */
+    @Serializable(with = LenientBooleanSerializer::class) val unread: Boolean = false,
+    /** Shared read watermark; null on untracked chats/older gateways, zero for explicit mark-unread. */
+    @SerialName("last_read_at") val lastReadAt: Double? = null,
+) {
+    /** What a list shows as the name: the title, else the first prompt, else a placeholder. */
+    val displayTitle: String
+        get() = title?.takeIf { it.isNotBlank() } ?: preview?.takeIf { it.isNotBlank() }?.lineSequence()?.first()
+            ?: "Untitled session"
+
+    /** Whether [storedId] names this chat: its own id, or an earlier one of its compression lineage (a thread's stored id). */
+    fun isChat(storedId: String): Boolean = storedId == id || lineageIds?.contains(storedId) == true
+
+    /** Latest activity in epoch seconds, falling back to when the session started. */
+    val activityAt: Double? get() = lastActive ?: startedAt
+}
+
+/**
+ * What a stored session has used so far, from its row (`GET /api/sessions/{id}`). The gateway keeps
+ * these through restarts; costs are estimates from its price table unless the provider billed exactly.
+ */
+@Serializable
+data class SessionTotals(
+    // Null in rows written before a counter existed.
+    @SerialName("input_tokens") val inputTokens: Long? = null,
+    @SerialName("output_tokens") val outputTokens: Long? = null,
+    @SerialName("cache_read_tokens") val cacheReadTokens: Long? = null,
+    @SerialName("cache_write_tokens") val cacheWriteTokens: Long? = null,
+    @SerialName("reasoning_tokens") val reasoningTokens: Long? = null,
+    @SerialName("api_call_count") val apiCalls: Long? = null,
+    @SerialName("estimated_cost_usd") val estimatedCostUsd: Double? = null,
+    @SerialName("actual_cost_usd") val actualCostUsd: Double? = null,
+    /** e.g. `estimated`, `actual`, `included` (a subscription), `unknown` (no price for the model). */
+    @SerialName("cost_status") val costStatus: String? = null,
+    val model: String? = null,
+    /** Also returned by this stored-row endpoint: the shared read watermark, not a message cursor. */
+    @SerialName("last_read_at") val lastReadAt: Double? = null,
+) {
+    /** The billed amount when there is one, else the estimate. */
+    val costUsd: Double? get() = actualCostUsd?.takeIf { it > 0 } ?: estimatedCostUsd
+    val costIsEstimate: Boolean get() = actualCostUsd == null || actualCostUsd <= 0
+}
+
+@Serializable
+data class SessionPage(
+    val sessions: List<SessionSummary> = emptyList(),
+    val total: Int = 0,
+    val limit: Int = 0,
+    val offset: Int = 0,
+)
+
+/** Which part of the archive a listing covers (`archived=` query). */
+enum class ArchiveFilter(val wire: String) { Exclude("exclude"), Only("only"), Include("include") }
+
+/** `source` of sessions started by scheduled (cron) jobs. */
+const val CRON_SOURCE = "cron"
+
+/** Machine-originated session sources that Recent hides (matches Desktop's SIDEBAR_EXCLUDED_SOURCES). */
+val MACHINE_SOURCES = listOf("acp", CRON_SOURCE, "kanban", "oneshot", "subagent", "tool")
+
+/** Sources of chats held in the gateway's own clients, Herald's (`desktop`) among them (Desktop's LOCAL_SESSION_SOURCE_IDS). */
+val LOCAL_SOURCES = setOf("acp", "cli", "codex", "desktop", "gateway", "kanban", "local", "oneshot", "tui")
+
+/**
+ * Whether [source] is outside the gateway's own clients: a messaging platform (Telegram, Discord, …), the API server,
+ * a webhook or a plugin's bridge. Any source that isn't local or a machine's counts, so a bridge with an id of its own does too.
+ */
+fun isExternalSource(source: String?): Boolean {
+    val id = source?.trim()?.lowercase().orEmpty()
+    return id.isNotEmpty() && id != "unknown" && id !in LOCAL_SOURCES && id !in MACHINE_SOURCES
+}
+
+/**
+ * The list views. Like Hermes Desktop, Recent leaves out machine-originated runs (cron, oneshot,
+ * subagent, etc.) which would otherwise push real conversations off the first page. They stay
+ * reachable through search, and cron runs also through their job (`CronApi.runs`).
+ */
+enum class SessionListFilter(
+    val archived: ArchiveFilter,
+    val source: String? = null,
+    val excludeSources: List<String> = emptyList(),
+) {
+    Recent(ArchiveFilter.Exclude, excludeSources = MACHINE_SOURCES),
+    Archived(ArchiveFilter.Only),
+}
+
+/**
+ * One stored transcript row from `GET /api/sessions/{id}/messages` — the raw `messages` table row
+ * plus display projections. [content] is usually a string, but multimodal turns store a parts array.
+ */
+@Serializable
+data class SessionMessage(
+    val id: Long? = null,
+    val role: String,
+    val content: JsonElement? = null,
+    @SerialName("display_content") val displayContent: JsonElement? = null,
+    @SerialName("tool_calls") val toolCalls: JsonElement? = null,
+    @SerialName("tool_call_id") val toolCallId: String? = null,
+    @SerialName("tool_name") val toolName: String? = null,
+    val timestamp: Double? = null,
+    val reasoning: String? = null,
+    @SerialName("display_kind") val displayKind: String? = null,
+    /** The session the row is stored under: an ancestor's id for rows from before a compression. */
+    @SerialName("session_id") val sessionId: String? = null,
+    /** False for rows a compression archived; the live agent no longer holds them. */
+    @Serializable(with = LenientBooleanSerializer::class) val active: Boolean = true,
+    /** Kept only to show what a compression summarized. */
+    @Serializable(with = LenientBooleanSerializer::class) val compacted: Boolean = false,
+    @SerialName("display_reasoning") val displayReasoning: String? = null,
+    @SerialName("display_commentary") val displayCommentary: List<String>? = null,
+) {
+    /** Plain text to render: the display projection when present, else the stored content. */
+    val text: String get() = (displayContent ?: content).plainText()
+
+    /** Prefer the gateway's display projection; older gateways only send [reasoning]. */
+    val reasoningText: String
+        get() {
+            val base = displayReasoning ?: reasoning.orEmpty()
+            // Some gateways still flatten public commentary into legacy reasoning. Match whole lines,
+            // including multiline commentary, without changing the stored text's line endings.
+            val lines = "\n${base.replace("\r\n", "\n")}\n"
+            val commentary = displayCommentary.orEmpty().map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.replace("\r\n", "\n") }.filterNot {
+                lines.contains("\n${it.replace("\r\n", "\n")}\n")
+            }
+            return (listOf(base) + commentary).filter { it.isNotBlank() }.joinToString("\n\n")
+        }
+
+    /** Image parts of a multimodal row (`image_url` / `image` / `input_image`). */
+    val imageCount: Int
+        get() = ((displayContent as? JsonArray) ?: (content as? JsonArray)).orEmpty().count { part ->
+            (part as? JsonObject)?.get("type")?.stringOrNull() in IMAGE_PART_TYPES
+        }
+
+    /** Names of the tools an assistant turn called (`tool_calls[].function.name`). */
+    val calledTools: List<String> get() = storedToolCalls.map { it.name }
+
+    /** The calls an assistant turn made, with their ids (to find each result row) and arguments. */
+    val storedToolCalls: List<StoredToolCall>
+        get() = (toolCalls as? JsonArray).orEmpty().mapNotNull { call ->
+            val obj = call as? JsonObject ?: return@mapNotNull null
+            val function = obj["function"] as? JsonObject
+            val name = (function?.get("name") ?: obj["name"])?.stringOrNull() ?: return@mapNotNull null
+            StoredToolCall(id = obj["id"]?.stringOrNull(), name = name, arguments = function?.get("arguments") ?: obj["arguments"])
+        }
+
+    /** Rows the gateway marks for storage only (compaction wrappers, seeded context). */
+    val isHidden: Boolean get() = displayKind == "hidden"
+}
+
+/** One `tool_calls[]` entry; [arguments] is usually JSON text. */
+data class StoredToolCall(val id: String?, val name: String, val arguments: JsonElement?)
+
+@Serializable
+data class SessionMessagesPage(
+    @SerialName("session_id") val sessionId: String,
+    val messages: List<SessionMessage> = emptyList(),
+)
+
+private val IMAGE_PART_TYPES = setOf("image_url", "image", "input_image")
+
+private fun JsonElement?.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
+
+/** Strings pass through; OpenAI-style parts arrays join their `text` parts; anything else is dropped. */
+private fun JsonElement?.plainText(): String = when (this) {
+    null -> ""
+    is JsonPrimitive -> if (isString) content else ""
+    is JsonArray -> mapNotNull { part ->
+        when (part) {
+            is JsonPrimitive -> part.contentOrNull
+            is JsonObject -> part["text"]?.jsonPrimitive?.contentOrNull
+            else -> null
+        }
+    }.joinToString("\n")
+    is JsonObject -> this["text"]?.stringOrNull() ?: ""
+}

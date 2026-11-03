@@ -1,0 +1,892 @@
+package dev.hermeskotlin.ui.preview
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
+import com.composables.icons.lucide.Archive
+import com.composables.icons.lucide.CalendarClock
+import com.composables.icons.lucide.CloudOff
+import com.composables.icons.lucide.Plus
+import dev.hermeskotlin.ui.components.EmptyState
+import dev.hermeskotlin.ui.sessions.InsightsUiState
+import dev.hermeskotlin.ui.sessions.SubpageHeader
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.RefreshCw
+import dev.hermeskotlin.designsystem.components.BottomSheet
+import dev.hermeskotlin.designsystem.components.Button
+import dev.hermeskotlin.designsystem.components.ButtonVariant
+import dev.hermeskotlin.designsystem.components.LocalGlow
+import dev.hermeskotlin.designsystem.components.SheetHeader
+import dev.hermeskotlin.ui.chat.PendingComment
+import dev.hermeskotlin.ui.connect.AccessToken
+import dev.hermeskotlin.ui.connect.ClientCert
+import dev.hermeskotlin.ui.connect.ConnectUiState
+import dev.hermeskotlin.ui.connect.ConnectView
+import dev.hermeskotlin.ui.connect.ConnectionChecklist
+import dev.hermeskotlin.ui.signin.SignInMethods
+import dev.hermeskotlin.ui.signin.SignInUiState
+import dev.hermeskotlin.ui.signin.SignInView
+import dev.hermeskotlin.core.gateway.GatewayStatus
+import dev.hermeskotlin.core.gateway.GatewayUrl
+import dev.hermeskotlin.core.gateway.ProbeResult
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import dev.hermeskotlin.designsystem.components.Toast
+import dev.hermeskotlin.core.capabilities.McpServer
+import dev.hermeskotlin.core.capabilities.Skill
+import dev.hermeskotlin.core.capabilities.Toolset
+import dev.hermeskotlin.core.phone.AgentScreens
+import dev.hermeskotlin.ui.chat.AgentScreenContext
+import dev.hermeskotlin.ui.chat.CheckpointsSheetView
+import dev.hermeskotlin.ui.chat.LocalAgentScreens
+import dev.hermeskotlin.ui.chat.FileDownload
+import dev.hermeskotlin.ui.chat.FileLoad
+import dev.hermeskotlin.ui.chat.FileViewerPage
+import dev.hermeskotlin.ui.chat.ProcessesSheetView
+import dev.hermeskotlin.ui.chat.SessionControlSheetView
+import dev.hermeskotlin.ui.chat.UsageSheetView
+import dev.hermeskotlin.ui.sessions.CapabilitiesActions
+import dev.hermeskotlin.ui.sessions.CapabilitiesView
+import dev.hermeskotlin.ui.sessions.SkillsHubActions
+import dev.hermeskotlin.ui.sessions.SkillsHubView
+import dev.hermeskotlin.core.capabilities.HubSkill
+import dev.hermeskotlin.ui.sessions.ConfigActions
+import dev.hermeskotlin.ui.sessions.ConfigPlace
+import dev.hermeskotlin.ui.sessions.ConfigView
+import dev.hermeskotlin.core.config.ConfigCatalog
+import dev.hermeskotlin.core.config.ConfigEntry
+import dev.hermeskotlin.ui.sessions.ChoiceSheet
+import kotlinx.serialization.json.JsonElement
+import dev.hermeskotlin.ui.sessions.ScheduledActions
+import dev.hermeskotlin.ui.inbox.FollowView
+import dev.hermeskotlin.ui.inbox.GroupsView
+import dev.hermeskotlin.ui.inbox.InboxView
+import dev.hermeskotlin.ui.inbox.RunView
+import dev.hermeskotlin.ui.sessions.ScheduledView
+import dev.hermeskotlin.ui.sessions.CapabilityTab
+import dev.hermeskotlin.ui.sessions.InsightsView
+import dev.hermeskotlin.ui.sessions.JobEditorPage
+import dev.hermeskotlin.designsystem.components.SidebarLayout
+import dev.hermeskotlin.designsystem.components.rememberSidebarState
+import dev.hermeskotlin.core.settings.ThemeMode
+import dev.hermeskotlin.ui.sessions.SessionsSidebarSample
+import dev.hermeskotlin.ui.sessions.BotsSidebarSample
+import dev.hermeskotlin.core.rooms.Room
+import dev.hermeskotlin.core.rooms.RoomPendingAction
+import dev.hermeskotlin.ui.bots.BotFaces
+import dev.hermeskotlin.ui.bots.LocalBotFaces
+import dev.hermeskotlin.ui.rooms.RoomActions
+import dev.hermeskotlin.ui.rooms.RoomView
+import dev.hermeskotlin.ui.plugins.PluginsUiState
+import dev.hermeskotlin.ui.gateways.GatewaysSheet
+import dev.hermeskotlin.ui.journey.JourneySheetView
+import dev.hermeskotlin.ui.rooms.CreateRoomDialog
+import dev.hermeskotlin.ui.bots.BotEditor
+import dev.hermeskotlin.core.bots.BotDetails
+import dev.hermeskotlin.ui.plugins.PluginsView
+import dev.hermeskotlin.ui.assistant.AssistantBackdrop
+import dev.hermeskotlin.ui.assistant.AssistantCard
+import dev.hermeskotlin.ui.sessions.ProjectDraft
+import dev.hermeskotlin.core.projects.FolderListing
+import dev.hermeskotlin.ui.sessions.ProjectActionsSheet
+import dev.hermeskotlin.ui.sessions.NewProjectDialog
+import dev.hermeskotlin.ui.settings.AppIconScreen
+import dev.hermeskotlin.ui.settings.ConnectionCheckSheet
+import dev.hermeskotlin.ui.settings.GatewayInfo
+import dev.hermeskotlin.ui.settings.SettingsView
+import dev.hermeskotlin.ui.settings.StartInstructionView
+import dev.hermeskotlin.ui.update.LocalRenameOffer
+import dev.hermeskotlin.ui.update.RenameOffer
+import androidx.compose.ui.tooling.preview.Preview
+import com.composeunstyled.theme.ColorScheme
+import dev.hermeskotlin.core.chat.ChatState
+import dev.hermeskotlin.core.models.PickerScope
+import dev.hermeskotlin.core.settings.AppSettings
+import dev.hermeskotlin.core.settings.DEFAULT_ACCENT
+import dev.hermeskotlin.designsystem.AccentPalette
+import dev.hermeskotlin.designsystem.LocalAccentPalette
+import dev.hermeskotlin.designsystem.hermesTheme
+import dev.hermeskotlin.ui.LocalAppSettings
+import dev.hermeskotlin.ui.chat.ChatView
+import dev.hermeskotlin.ui.chat.ModelPickerState
+import dev.hermeskotlin.ui.chat.ModelSheet
+import dev.hermeskotlin.ui.voice.DictationState
+import dev.hermeskotlin.ui.voice.ReadAloudState
+import dev.hermeskotlin.ui.voice.VoiceChatState
+
+/** The screens the README shows, drawn from [ChatSamples]. */
+enum class PreviewScene(val label: String) {
+    Reply("A finished reply"),
+    Working("A turn at work"),
+    Approval("An approval"),
+    LongApproval("An approval for a long command"),
+    BareApproval("An approval with no tool or purpose"),
+    VaultUnlock("A locked password manager"),
+    VaultCode("A sign-in code"),
+    VaultSaveLogin("A login to save"),
+    Undelivered("Messages that lost their reply"),
+    Subagents("Subagents"),
+    AgentScreen("A screen the agent drew, waiting for a tap"),
+    Voice("Voice chat"),
+    VoiceCutIn("A reply read in the voice chat, talking over it on"),
+    ReadAloud("A reply being read aloud"),
+    ReadAloudFailed("A reply the gateway couldn't voice"),
+    NewChat("A new chat"),
+    Sidebar("The sessions sidebar"),
+    Renamed("The sidebar after updating from Herald, with the rename card"),
+    Bots("The bots and rooms"),
+    Room("A room of bots"),
+    NewRoom("A new room"),
+    BotEditor("Editing a bot"),
+    Settings("Settings"),
+    AppIcons("The app icons"),
+    StartInstruction("The starting instruction for new chats"),
+    Gateways("Saved gateways"),
+    Journey("What the agent has learned"),
+    Insights("Insights"),
+    Capabilities("Capabilities"),
+    SkillsHub("The skills hub"),
+    SkillsHubDetail("A hub skill opened, scan clean"),
+    SkillsHubCaution("A hub skill whose scan wants a yes"),
+    SkillsHubBlocked("A hub skill the scan blocked"),
+    Config("Hermes's settings"),
+    ConfigVoice("Hermes's voice settings, one saving"),
+    ConfigSearch("A search across Hermes's settings"),
+    ConfigPicker("Picking a voice, with Other… for one off the list"),
+    Plugins("Plugins with a page"),
+    Assistant("The assistant, called up over another app"),
+    AssistantAnswer("The assistant, after a question about the screen"),
+    Scheduled("Scheduled jobs"),
+    Inbox("The Inbox's folders"),
+    InboxFolder("A folder in the Inbox"),
+    InboxReport("A report read in full"),
+    InboxJobs("The jobs in the Inbox"),
+    InboxGroups("Folders and groups"),
+    ScheduledJob("A scheduled job and its runs"),
+    JobEditor("A new scheduled job"),
+    Usage("Usage and context"),
+    Processes("Background processes"),
+    Goal("The chat's goal, loop and heartbeat"),
+    GoalStrip("A chat with a goal, loop and heartbeat above the composer"),
+    Comments("Comments on a reply"),
+    MidTask("Typing while a task runs"),
+    ConnectionCheck("The connection check"),
+    LongChat("A chat to scroll back through"),
+    Tables("Tables in an answer"),
+    Notices("Notices from the gateway"),
+    Archived("Archived, with Undo"),
+    Checkpoints("Checkpoints, one opened on its changes"),
+    FileMarkdown("A Markdown file a reply linked to, rendered full screen"),
+    FileCode("A code file opened at the line its link names"),
+    FileTable("A CSV file as a table"),
+    FileMissing("A linked file the gateway no longer has"),
+    FilePdf("A PDF a reply linked to, its pages drawn"),
+    ProjectOptions("A project's options"),
+    NewProject("A new project"),
+    Threads("Threads above the pinned chats"),
+    Models("Your starred and recent models in the model picker"),
+    ModelsAll("Every model, one row per model, in the model picker"),
+    ModelSearch("A search in the model picker"),
+    Offline("A chat that can't reach the gateway"),
+    EmptyPage("A page with nothing on it yet"),
+    LoadError("A page that couldn't load"),
+    Loading("A page loading"),
+    Connect("Connecting to a gateway that answered"),
+    ConnectFailed("A gateway that didn't answer"),
+    SignIn("Signing in"),
+}
+
+/**
+ * One scene full-screen in the app theme: Android Studio previews and the debug screenshot gallery both use it.
+ * [accent] is an [AccentPalette] name; [glow] is the Glow setting.
+ */
+@Composable
+fun HeraldPreview(scene: PreviewScene, dark: Boolean = true, accent: String = DEFAULT_ACCENT, glow: Boolean = true) {
+    val palette = AccentPalette.named(accent)
+    hermesTheme(palette)(if (dark) ColorScheme.Dark else ColorScheme.Light) {
+        CompositionLocalProvider(
+            LocalAccentPalette provides palette,
+            LocalAppSettings provides AppSettings(showPet = false, glow = glow),
+            LocalGlow provides glow,
+        ) {
+            when (scene) {
+                PreviewScene.Reply -> SampleChat(ChatSamples.reply)
+                PreviewScene.Tables -> SampleChat(ChatSamples.tables)
+                PreviewScene.Notices -> SampleChat(ChatSamples.notices)
+                PreviewScene.Working -> SampleChat(ChatSamples.working)
+                PreviewScene.Approval -> SampleChat(ChatSamples.approval)
+                PreviewScene.LongApproval -> SampleChat(ChatSamples.longApproval)
+                PreviewScene.BareApproval -> SampleChat(ChatSamples.bareApproval)
+                PreviewScene.VaultUnlock -> SampleChat(ChatSamples.vaultUnlock)
+                PreviewScene.VaultCode -> SampleChat(ChatSamples.vaultCode)
+                PreviewScene.VaultSaveLogin -> SampleChat(ChatSamples.vaultSaveLogin)
+                PreviewScene.Undelivered -> SampleChat(ChatSamples.undelivered)
+                PreviewScene.Subagents -> SampleChat(ChatSamples.subagents)
+                PreviewScene.AgentScreen -> CompositionLocalProvider(
+                    LocalAgentScreens provides AgentScreenContext(
+                        live = listOf(AgentScreens.Live(null, setOf(ChatSamples.SCREEN_SURFACE))),
+                        onShown = { _, _ -> },
+                        onAnswer = { _, _, _ -> true },
+                        onFail = { _, _, _ -> },
+                    ),
+                ) { SampleChat(ChatSamples.agentScreen) }
+                PreviewScene.Voice -> SampleChat(ChatSamples.voice, voiceChat = ChatSamples.listening)
+                PreviewScene.VoiceCutIn -> SampleChat(ChatSamples.voice, voiceChat = ChatSamples.speakingCutIn)
+                PreviewScene.ReadAloud -> SampleChat(ChatSamples.reply, readAloud = ReadAloudState(key = "a1"))
+                PreviewScene.ReadAloudFailed -> SampleChat(ChatSamples.reply, readAloud = ReadAloudState(error = "Speech synthesis failed"))
+                PreviewScene.NewChat -> SampleChat(ChatSamples.empty, placeholder = "What are we building?")
+                PreviewScene.Sidebar -> OpenSidebar {
+                    SessionsSidebarSample(
+                        ChatSamples.sessions(),
+                        selectedId = "s1",
+                        userLabel = ChatSamples.USER,
+                        statuses = ChatSamples.sessionStatuses,
+                        drafts = ChatSamples.sessionDrafts,
+                        projects = ChatSamples.projects,
+                    )
+                }
+                PreviewScene.Renamed -> OpenSidebar {
+                    CompositionLocalProvider(LocalRenameOffer provides RenameOffer(show = true) {}) {
+                        SessionsSidebarSample(
+                            ChatSamples.sessions(),
+                            selectedId = "s1",
+                            userLabel = ChatSamples.USER,
+                            statuses = ChatSamples.sessionStatuses,
+                            drafts = ChatSamples.sessionDrafts,
+                            projects = ChatSamples.projects,
+                        )
+                    }
+                }
+                PreviewScene.AppIcons -> AppIconScreen(onBack = {})
+                PreviewScene.Threads -> OpenSidebar {
+                    SessionsSidebarSample(
+                        ChatSamples.threadSessions(),
+                        selectedId = "s1",
+                        userLabel = ChatSamples.USER,
+                        statuses = ChatSamples.threadStatuses,
+                        drafts = ChatSamples.sessionDrafts,
+                        projects = ChatSamples.projects,
+                        threads = ChatSamples.threads,
+                    )
+                }
+                PreviewScene.Bots -> OpenSidebar {
+                    BotsSidebarSample(
+                        BotSamples.roster,
+                        userLabel = ChatSamples.USER,
+                        nowSeconds = BotSamples.now,
+                        needsYou = BotSamples.needsYou,
+                        rooms = BotSamples.rooms,
+                    )
+                }
+                PreviewScene.Room -> {
+                    val faces = remember { BotFaces(BotSamples.roster.all) }
+                    CompositionLocalProvider(LocalBotFaces provides faces) {
+                        RoomView(BotSamples.openRoom, remember { PreviewRoomActions() }, faces, onOpenSidebar = {}, onBack = {})
+                    }
+                }
+                PreviewScene.Archived -> Box(Modifier.fillMaxSize()) {
+                    OpenSidebar {
+                        SessionsSidebarSample(
+                            ChatSamples.sessions().filterNot { it.id == "s3" },
+                            selectedId = "s1",
+                            userLabel = ChatSamples.USER,
+                            statuses = ChatSamples.sessionStatuses,
+                            drafts = ChatSamples.sessionDrafts,
+                        )
+                    }
+                    Toast(
+                        "Archived “${ChatSamples.sessions().first { it.id == "s3" }.displayTitle}”",
+                        icon = Lucide.Archive,
+                        modifier = Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(14.dp).fillMaxWidth(),
+                        actionLabel = "Undo",
+                    )
+                }
+                PreviewScene.ProjectOptions, PreviewScene.NewProject -> Box(Modifier.fillMaxSize()) {
+                    val site = ChatSamples.projects.first { it.id == "p-site" }
+                    OpenSidebar {
+                        SessionsSidebarSample(
+                            ChatSamples.sessions(),
+                            selectedId = "s1",
+                            userLabel = ChatSamples.USER,
+                            statuses = ChatSamples.sessionStatuses,
+                            drafts = ChatSamples.sessionDrafts,
+                            projects = ChatSamples.projects,
+                            selectedProject = site,
+                            canMakeProjects = true,
+                        )
+                    }
+                    if (scene == PreviewScene.ProjectOptions) {
+                        ProjectActionsSheet(site, onDismiss = {}, onRename = {}, onDelete = {}, onSave = {})
+                    } else {
+                        NewProjectDialog(
+                            ProjectDraft(name = "Kyllene", folder = "/home/you/projects/kyllene"),
+                            busy = false,
+                            error = null,
+                            onDismiss = {},
+                            onCreate = { _, _ -> },
+                            // Browse folders opens on sample folders, for the picker's screenshots.
+                            listFolders = { dir, _ ->
+                                FolderListing(
+                                    if (dir.endsWith("/projects/")) listOf("herald", "notes-app", "site") else listOf("androidApp", "docs", "shared"),
+                                )
+                            },
+                            makeFolder = { _, _ -> null },
+                        )
+                    }
+                }
+                PreviewScene.Comments -> SampleChat(ChatSamples.reply, comments = remember { ChatSamples.comments() })
+                PreviewScene.LongChat -> SampleChat(ChatSamples.longChat)
+                PreviewScene.MidTask ->SampleChat(ChatSamples.working, composerText = "Also check the photos share")
+                PreviewScene.Offline -> SampleChat(ChatSamples.reply, offline = true)
+                PreviewScene.EmptyPage -> OpenSidebar {
+                    SidebarPage {
+                        Column {
+                            SubpageHeader("Scheduled", onBack = {})
+                            EmptyState(
+                                Lucide.CalendarClock,
+                                "No scheduled jobs",
+                                "Have the agent do something on a schedule, like a morning briefing. Each run opens as a chat here.",
+                            ) { Button("New job", onClick = {}, leadingIcon = Lucide.Plus) }
+                        }
+                    }
+                }
+                PreviewScene.LoadError -> OpenSidebar {
+                    SidebarPage {
+                        Column {
+                            SubpageHeader("Capabilities", onBack = {})
+                            EmptyState(Lucide.CloudOff, "Couldn't load", "The gateway didn't answer in time.", error = true) {
+                                Button("Try again", onClick = {}, variant = ButtonVariant.Secondary, leadingIcon = Lucide.RefreshCw)
+                            }
+                        }
+                    }
+                }
+                PreviewScene.Connect -> SampleConnect(
+                    ProbeResult.Reachable(
+                        GatewayUrl.parse("https://hermes.example.ts.net"),
+                        GatewayStatus(
+                            version = "0.9.0",
+                            gatewayRunning = true,
+                            authRequired = true,
+                            authProviders = listOf("basic"),
+                            authFlows = listOf("native_pkce"),
+                            profiles = listOf("default", "work"),
+                        ),
+                    ),
+                )
+                PreviewScene.ConnectFailed -> SampleConnect(
+                    ProbeResult.Unreachable(GatewayUrl.parse("192.168.1.20:9119"), "Connection refused"),
+                    address = "192.168.1.20:9119",
+                )
+                PreviewScene.SignIn -> SignInView(
+                    host = "hermes.example.ts.net",
+                    notice = null,
+                    state = SignInUiState(methods = SignInMethods(password = true, browser = true)),
+                    username = remember { TextFieldState("alex") },
+                    password = remember { TextFieldState("correct-horse") },
+                    onSignIn = {},
+                    onSignInWithBrowser = {},
+                    onCancelBrowser = {},
+                    onChangeGateway = {},
+                )
+                PreviewScene.Loading -> OpenSidebar {
+                    SidebarPage { InsightsView(InsightsUiState(), onBack = {}, onSelectPeriod = {}, onRetry = {}) }
+                }
+                PreviewScene.Insights -> OpenSidebar {
+                    SidebarPage { InsightsView(PageSamples.insights(), onBack = {}, onSelectPeriod = {}, onRetry = {}, place = "homelab") }
+                }
+                PreviewScene.Capabilities -> OpenSidebar {
+                    SidebarPage { CapabilitiesView(PageSamples.capabilities, remember { TextFieldState() }, PreviewCapabilitiesActions, onBack = {}) }
+                }
+                PreviewScene.SkillsHub, PreviewScene.SkillsHubDetail, PreviewScene.SkillsHubCaution, PreviewScene.SkillsHubBlocked -> OpenSidebar {
+                    val hub = when (scene) {
+                        PreviewScene.SkillsHubDetail -> PageSamples.skillsHubDetail
+                        PreviewScene.SkillsHubCaution -> PageSamples.skillsHubCaution
+                        PreviewScene.SkillsHubBlocked -> PageSamples.skillsHubBlocked
+                        else -> PageSamples.skillsHub
+                    }
+                    SidebarPage { SkillsHubView(hub, remember { TextFieldState() }, PreviewSkillsHubActions, onBack = {}, subtitle = "Installs into the main profile") }
+                }
+                PreviewScene.Config, PreviewScene.ConfigVoice, PreviewScene.ConfigSearch, PreviewScene.ConfigPicker -> OpenSidebar {
+                    val config = PageSamples.config(place = "voice".takeIf { scene == PreviewScene.ConfigVoice || scene == PreviewScene.ConfigPicker })
+                    SidebarPage {
+                        ConfigView(
+                            config,
+                            remember { TextFieldState(if (scene == PreviewScene.ConfigSearch) "memory" else "") },
+                            remember { TextFieldState() },
+                            PreviewConfigActions,
+                            onBack = {},
+                        )
+                    }
+                    if (scene == PreviewScene.ConfigPicker) {
+                        ChoiceSheet(ConfigCatalog.entry("voice.gpt_live.voice", config.schema!!, config.values!!), onDismiss = {}, onPick = { _, _ -> }, onOther = {})
+                    }
+                }
+                PreviewScene.Gateways -> Box(Modifier.fillMaxSize()) {
+                    SampleChat(ChatSamples.reply)
+                    GatewaysSheet(
+                        visible = true,
+                        choices = PageSamples.gateways,
+                        activeUrl = "https://hermes.example.ts.net",
+                        onDismiss = {},
+                        onSwitch = {},
+                        onAdd = {},
+                        onSetPrimary = {},
+                        onRename = { _, _ -> },
+                        onRemove = {},
+                        onSetClientCert = { _, _ -> },
+                    )
+                }
+                PreviewScene.BotEditor -> BotEditor(
+                    bot = BotSamples.scribe.copy(model = "anthropic/claude-opus-5-5", provider = "anthropic"),
+                    taken = emptySet(),
+                    busy = null,
+                    loadDetails = {
+                        BotDetails(
+                            soul = "I'm Scribe. I keep notes short, dated and easy to search.",
+                            description = "Takes meeting notes and files them where you can find them.",
+                        )
+                    },
+                    onBack = {},
+                    onCreate = {},
+                    onSave = { _, _, _ -> },
+                )
+                PreviewScene.NewRoom -> Box(Modifier.fillMaxSize()) {
+                    OpenSidebar {
+                        BotsSidebarSample(BotSamples.roster, userLabel = ChatSamples.USER, nowSeconds = BotSamples.now, rooms = BotSamples.rooms)
+                    }
+                    CreateRoomDialog(visible = true, bots = BotSamples.roster.bots, busy = null, onDismiss = {}, onCreate = { _, _ -> })
+                }
+                PreviewScene.Journey -> Box(Modifier.fillMaxSize()) {
+                    SampleChat(ChatSamples.reply)
+                    JourneySheetView(visible = true, state = remember { PageSamples.journey() }, detail = { null }, onDismiss = {})
+                }
+                PreviewScene.Assistant, PreviewScene.AssistantAnswer -> AssistantBackdrop(onClose = {}) {
+                    AssistantCard(
+                        state = if (scene == PreviewScene.Assistant) AssistantSamples.offer else AssistantSamples.answered,
+                        actions = PreviewAssistantActions,
+                        microphoneAllowed = true,
+                        onOpenHerald = {},
+                        onSignIn = {},
+                        onAllowMicrophone = {},
+                        onOpenScreenSettings = {},
+                        onClose = {},
+                    )
+                }
+                PreviewScene.Plugins -> OpenSidebar {
+                    SidebarPage { PluginsView(PluginsUiState(plugins = PageSamples.plugins), onBack = {}, onOpenPlugin = {}, onRetry = {}) }
+                }
+                PreviewScene.Scheduled, PreviewScene.ScheduledJob -> OpenSidebar {
+                    SidebarPage {
+                        ScheduledView(
+                            PageSamples.scheduled(open = scene == PreviewScene.ScheduledJob),
+                            PreviewScheduledActions,
+                            selectedId = null,
+                            onBack = {},
+                            onOpenRun = {},
+                        )
+                    }
+                }
+                PreviewScene.Inbox, PreviewScene.InboxFolder -> OpenSidebar {
+                    SidebarPage {
+                        Column(Modifier.fillMaxSize()) {
+                            InboxView(
+                                if (scene == PreviewScene.Inbox) InboxSamples.folders() else InboxSamples.folder(),
+                                PreviewInboxActions,
+                                onBack = {},
+                                onOpenSettings = {},
+                            )
+                        }
+                    }
+                }
+                PreviewScene.InboxReport -> OpenSidebar {
+                    SidebarPage {
+                        Column(Modifier.fillMaxSize()) {
+                            RunView(InboxSamples.report(), "☀️ Morning briefing", loading = false, note = null, onBack = {})
+                        }
+                    }
+                }
+                PreviewScene.InboxJobs -> OpenSidebar {
+                    SidebarPage { Column(Modifier.fillMaxSize()) { FollowView(InboxSamples.jobs(), PreviewInboxActions) } }
+                }
+                PreviewScene.InboxGroups -> OpenSidebar {
+                    SidebarPage { Column(Modifier.fillMaxSize()) { GroupsView(InboxSamples.groups(), PreviewInboxActions) } }
+                }
+                PreviewScene.JobEditor -> OpenSidebar {
+                    SidebarPage {
+                        JobEditorPage(
+                            PageSamples.jobEditor,
+                            prompt = remember { TextFieldState(PageSamples.JOB_PROMPT) },
+                            schedule = remember { TextFieldState(PageSamples.JOB_SCHEDULE) },
+                            name = remember { TextFieldState(PageSamples.JOB_NAME) },
+                            deliveryTargets = PageSamples.deliveryTargets,
+                            onSetDeliver = {},
+                            onSave = {},
+                            onClose = {},
+                        )
+                    }
+                }
+                PreviewScene.Usage -> Box(Modifier.fillMaxSize()) {
+                    SampleChat(ChatSamples.reply)
+                    UsageSheetView(visible = true, state = PageSamples.usage, live = PageSamples.liveUsage, onDismiss = {})
+                }
+                PreviewScene.Checkpoints -> Box(Modifier.fillMaxSize()) {
+                    SampleChat(ChatSamples.reply)
+                    CheckpointsSheetView(
+                        visible = true,
+                        state = PageSamples.checkpoints,
+                        onDiff = {},
+                        onRestore = {},
+                        running = false,
+                        onDismiss = {},
+                        initiallyExpanded = "9f2c1ab47e0d55aa",
+                    )
+                }
+                PreviewScene.FileMarkdown, PreviewScene.FileCode, PreviewScene.FileTable, PreviewScene.FileMissing -> {
+                    val (file, load) = FileSamples.of(scene)
+                    FileViewerPage(file, onDismiss = {}, load = { load }, download = { FileDownload.Failed("") }, preset = load)
+                }
+                // Drawn by the platform's own PDF reader, so it goes through loading rather than a preset.
+                PreviewScene.FilePdf -> FileViewerPage(
+                    FileSamples.pdfFile,
+                    onDismiss = {},
+                    load = { FileLoad.Failed("") },
+                    download = { FileDownload.Ready(FileSamples.pdf) },
+                )
+                PreviewScene.Models, PreviewScene.ModelsAll, PreviewScene.ModelSearch -> Box(Modifier.fillMaxSize()) {
+                    SampleChat(ChatSamples.reply)
+                    val settings = AppSettings(showPet = false, glow = glow, starredModels = PageSamples.starredModels, recentModels = PageSamples.recentModels)
+                    CompositionLocalProvider(LocalAppSettings provides settings) {
+                        ModelSheet(
+                            visible = true,
+                            onDismiss = {},
+                            state = ChatState(),
+                            picker = ModelPickerState(catalog = PageSamples.modelCatalog),
+                            onRefresh = {},
+                            onSelectModel = {},
+                            onSelectEffort = {},
+                            onFast = {},
+                            onSettings = {},
+                            initialQuery = if (scene == PreviewScene.ModelSearch) "open" else "",
+                            initialScope = PickerScope.All.takeIf { scene == PreviewScene.ModelsAll },
+                        )
+                    }
+                }
+                PreviewScene.Processes -> Box(Modifier.fillMaxSize()) {
+                    SampleChat(ChatSamples.reply)
+                    ProcessesSheetView(visible = true, state = PageSamples.processes, onKill = {}, onDismiss = {}, initiallyExpanded = "proc_1")
+                }
+                PreviewScene.GoalStrip -> SampleChat(ChatSamples.reply.copy(control = PageSamples.control))
+                PreviewScene.Goal -> Box(Modifier.fillMaxSize()) {
+                    SampleChat(ChatSamples.reply)
+                    SessionControlSheetView(visible = true, control = PageSamples.control, busy = null, error = null, onAction = { _, _, _ -> }, onDismiss = {})
+                }
+                PreviewScene.Settings -> SettingsView(
+                    settings = AppSettings(theme = if (dark) ThemeMode.Dark else ThemeMode.Light, accent = accent, glow = glow),
+                    info = GatewayInfo(userLabel = ChatSamples.USER, version = "0.9.0"),
+                    gatewayUrl = "https://hermes.example.ts.net",
+                    gatewayName = "homelab",
+                    onUpdate = {},
+                    onBack = {},
+                    onSignOut = {},
+                    onOpenGateways = {},
+                )
+                PreviewScene.StartInstruction -> StartInstructionView(
+                    text = "I'm on my phone: keep replies short and skip long tables.",
+                    onChange = {},
+                    onBack = {},
+                )
+                PreviewScene.ConnectionCheck -> Box(Modifier.fillMaxSize()) {
+                    SettingsView(
+                        settings = AppSettings(theme = if (dark) ThemeMode.Dark else ThemeMode.Light, glow = glow),
+                        info = GatewayInfo(userLabel = ChatSamples.USER, version = "0.9.0"),
+                        gatewayUrl = "https://hermes.example.ts.net",
+                        gatewayName = "homelab",
+                        onUpdate = {},
+                        onBack = {},
+                        onSignOut = {},
+                        onOpenGateways = {},
+                    )
+                    ConnectionCheckSheet(visible = true, results = PageSamples.connectionCheck, running = false, onDismiss = {}, onCheckAgain = {})
+                }
+            }
+        }
+    }
+}
+
+/** The sidebar opened as on a phone: the drawer over the chat. A static preview shows it closed. */
+@Composable
+private fun OpenSidebar(content: @Composable () -> Unit) {
+    val sidebar = rememberSidebarState()
+    LaunchedEffect(sidebar) { sidebar.open() }
+    SidebarLayout(state = sidebar, sidebar = content) { SampleChat(ChatSamples.reply) }
+}
+
+/** One of the sidebar's pages, inset as the sidebar insets them. */
+@Composable
+private fun SidebarPage(content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start))) {
+        content()
+    }
+}
+
+private object PreviewCapabilitiesActions : CapabilitiesActions {
+    override fun selectTab(tab: CapabilityTab) = Unit
+    override fun refresh() = Unit
+    override fun setSkillEnabled(skill: Skill, enabled: Boolean) = Unit
+    override fun setToolsetEnabled(toolset: Toolset, enabled: Boolean) = Unit
+    override fun setServerEnabled(server: McpServer, enabled: Boolean) = Unit
+    override fun testServer(server: McpServer) = Unit
+    override fun dismissMessage() = Unit
+    override fun openHub() = Unit
+    override fun uninstallSkill(skill: Skill) = Unit
+}
+
+private object PreviewSkillsHubActions : SkillsHubActions {
+    override fun refresh() = Unit
+    override fun search(query: String) = Unit
+    override fun open(skill: HubSkill) = Unit
+    override fun closeDetail() = Unit
+    override fun install(skill: HubSkill) = Unit
+    override fun confirmInstall() = Unit
+    override fun cancelConfirm() = Unit
+    override fun uninstall(name: String) = Unit
+    override fun updateAll() = Unit
+    override fun dismissMessage() = Unit
+}
+
+private object PreviewConfigActions : ConfigActions {
+    override fun refresh() = Unit
+    override fun open(view: ConfigPlace) = Unit
+    override fun back() = false
+    override fun set(entry: ConfigEntry, value: JsonElement) = Unit
+    override fun confirmChange() = Unit
+    override fun cancelChange() = Unit
+    override fun saveYaml() = Unit
+    override fun discardYaml() = Unit
+    override fun keepEditing() = Unit
+    override fun dismissMessage() = Unit
+}
+
+private object PreviewScheduledActions : ScheduledActions {
+    override fun refresh() = Unit
+    override fun newJob() = Unit
+    override fun openJob(jobId: String) = Unit
+    override fun closeJob() = Unit
+    override fun editJob() = Unit
+    override fun runNow() = Unit
+    override fun togglePaused() = Unit
+    override fun askDelete() = Unit
+    override fun cancelDelete() = Unit
+    override fun deleteJob() = Unit
+}
+
+private class PreviewRoomActions : RoomActions {
+    override val composer = TextFieldState()
+    override fun send() = Unit
+    override fun stop() = Unit
+    override fun loadEarlier() = Unit
+    override fun approve(action: RoomPendingAction, choice: String) = Unit
+    override fun retry(action: RoomPendingAction) = Unit
+    override fun renameRoom(room: Room, name: String) = Unit
+    override fun deleteRoom(room: Room) = Unit
+    override fun dismissRoomNotice() = Unit
+}
+
+@Composable
+private fun SampleChat(
+    state: ChatState,
+    voiceChat: VoiceChatState = VoiceChatState(),
+    readAloud: ReadAloudState = ReadAloudState(),
+    placeholder: String = ChatSamples.PLACEHOLDER,
+    comments: List<PendingComment> = emptyList(),
+    composerText: String = "",
+    /** The gateway can't be reached and the link is being made again. */
+    offline: Boolean = false,
+) {
+    ChatView(
+        title = state.title ?: "New chat",
+        state = state,
+        picker = ModelPickerState(),
+        connected = !offline,
+        connectionLabel = "No connection · connecting again…",
+        linkStatus = "Reconnecting…".takeIf { offline },
+        attachments = emptyList(),
+        attachmentError = null,
+        comments = comments,
+        voiceChat = voiceChat,
+        dictation = DictationState(),
+        readAloud = readAloud,
+        suggestions = emptyList(),
+        sprite = null,
+        placeholder = placeholder,
+        notice = null,
+        actions = remember(composerText) { PreviewChatActions(composerText) },
+        onOpenSidebar = {},
+        onNewChat = {},
+        onOpenMenu = {},
+        onOpenModels = {},
+        onAttach = {},
+        onDictate = {},
+        onVoiceChat = {},
+        onOpenPets = {},
+        onViewImage = {},
+        onNotice = {},
+        place = "homelab",
+    )
+}
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun ReplyPreview() = HeraldPreview(PreviewScene.Reply)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun ReplyLightPreview() = HeraldPreview(PreviewScene.Reply, dark = false)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun WorkingPreview() = HeraldPreview(PreviewScene.Working)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun ApprovalPreview() = HeraldPreview(PreviewScene.Approval)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun SubagentsPreview() = HeraldPreview(PreviewScene.Subagents)
+
+@Preview(widthDp = 360, heightDp = 800)
+@Composable
+private fun AgentScreenPreview() = HeraldPreview(PreviewScene.AgentScreen)
+
+@Preview(widthDp = 360, heightDp = 800)
+@Composable
+private fun AgentScreenLightPreview() = HeraldPreview(PreviewScene.AgentScreen, dark = false)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun VoicePreview() = HeraldPreview(PreviewScene.Voice)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun NewChatPreview() = HeraldPreview(PreviewScene.NewChat)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun SidebarPreview() = HeraldPreview(PreviewScene.Sidebar)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun ThreadsPreview() = HeraldPreview(PreviewScene.Threads)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun SettingsPreview() = HeraldPreview(PreviewScene.Settings)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun StartInstructionPreview() = HeraldPreview(PreviewScene.StartInstruction)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun InsightsPreview() = HeraldPreview(PreviewScene.Insights)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun CapabilitiesPreview() = HeraldPreview(PreviewScene.Capabilities)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun SkillsHubPreview() = HeraldPreview(PreviewScene.SkillsHub)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun SkillsHubDetailPreview() = HeraldPreview(PreviewScene.SkillsHubDetail)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun SkillsHubCautionPreview() = HeraldPreview(PreviewScene.SkillsHubCaution)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun SkillsHubBlockedPreview() = HeraldPreview(PreviewScene.SkillsHubBlocked)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun JobEditorPreview() = HeraldPreview(PreviewScene.JobEditor)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun UsagePreview() = HeraldPreview(PreviewScene.Usage)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun ProcessesPreview() = HeraldPreview(PreviewScene.Processes)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun GoalPreview() = HeraldPreview(PreviewScene.Goal)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun CheckpointsPreview() = HeraldPreview(PreviewScene.Checkpoints)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun ProjectOptionsPreview() = HeraldPreview(PreviewScene.ProjectOptions)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun NewProjectPreview() = HeraldPreview(PreviewScene.NewProject)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun ModelsPreview() = HeraldPreview(PreviewScene.Models)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun ModelSearchPreview() = HeraldPreview(PreviewScene.ModelSearch)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun ModelsAllPreview() = HeraldPreview(PreviewScene.ModelsAll)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun ConnectPreview() = HeraldPreview(PreviewScene.Connect)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun ConnectFailedPreview() = HeraldPreview(PreviewScene.ConnectFailed)
+
+@Preview(widthDp = 412, heightDp = 892)
+@Composable
+private fun SignInPreview() = HeraldPreview(PreviewScene.SignIn)
+
+/** The welcome screen after a test of [address] came back with [result]. */
+@Composable
+private fun SampleConnect(result: ProbeResult, address: String = "hermes.example.ts.net") {
+    ConnectView(
+        url = remember { TextFieldState(address) },
+        state = ConnectUiState(result = result),
+        access = AccessToken(remember { TextFieldState() }, remember { TextFieldState() }, saved = false, onForget = {}),
+        cert = ClientCert(alias = null, onPick = {}, onClear = {}),
+        onTest = {},
+        onContinue = {},
+        onCancel = null,
+    )
+}

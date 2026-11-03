@@ -1,0 +1,19 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# Local release signing (see androidApp/build.gradle.kts)
+keystore.properties
+*.jks
+
+# Build logs from local runs
+*.log

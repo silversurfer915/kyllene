@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Camera captures for the composer; deleted once read. -->
+    <cache-path name="camera" path="camera/" />
+    <!-- Pictures and files from the chat handed to the share sheet. -->
+    <cache-path name="shared" path="shared/" />
+    <!-- A build downloaded from the user's host, handed to Android's installer. -->
+    <cache-path name="updates" path="updates/" />
+</paths>

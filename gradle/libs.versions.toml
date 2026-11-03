@@ -1,0 +1,165 @@
+[versions]
+kotlin = "2.4.20"
+agp = "9.5.0"
+compose-multiplatform = "1.12.1"
+compose-unstyled = "2.10.0"
+lucide = "1.1.0"
+ktor = "3.6.0"
+jsoup = "1.23.2"
+koin = "4.2.2"
+kotlinx-coroutines = "1.11.0"
+kotlinx-serialization = "1.11.0"
+lifecycle = "2.11.0"
+activity-compose = "1.13.0"
+core-ktx = "1.19.1"
+browser = "1.10.0"
+biometric = "1.1.0"
+fragment = "1.8.9"
+health-connect = "1.1.0"
+markdown-renderer = "0.45.0"
+# The parser version already brought in by the Markdown renderer.
+markdown-parser = "0.7.9"
+# The version multiplatform-markdown-renderer-code 0.45.0 itself uses.
+highlights = "1.1.0"
+jlatexmath-android = "0.2.0"
+haze = "2.0.1"
+webrtc = "150.7871.01"
+room = "2.8.5"
+sqlite = "2.6.2"
+ksp = "2.3.12"
+# Wear OS companion
+play-services-wearable = "20.0.1"
+wear-compose = "1.7.1"
+wear-tiles = "1.6.2"
+# Agent-made UI (experiment, Android only)
+a2ui = "1.0.0-alpha02"
+coil = "3.6.3"
+media3 = "1.11.1"
+wear-protolayout = "1.4.2"
+wear-complications = "1.3.0"
+android-wear-minSdk = "30"
+# Rendered Compose layout tests on the Android host. Test-only: no production code or SDK changes.
+robolectric = "4.17"
+junit4 = "4.13.2"
+
+android-compileSdk = "37"
+# Compose 1.13 and A2UI need 37.1.
+android-compileSdkMinor = "1"
+android-targetSdk = "36"
+android-minSdk = "26"
+
+[libraries]
+markdown-parser = { module = "org.jetbrains:markdown", version.ref = "markdown-parser" }
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+# Compose Multiplatform
+compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose-multiplatform" }
+compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose-multiplatform" }
+compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose-multiplatform" }
+compose-ui-tooling-preview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "compose-multiplatform" }
+compose-ui-tooling = { module = "org.jetbrains.compose.ui:ui-tooling", version.ref = "compose-multiplatform" }
+
+# Design system
+compose-unstyled = { module = "com.composables:composeunstyled", version.ref = "compose-unstyled" }
+compose-unstyled-colored-indication = { module = "com.composables:composeunstyled-colored-indication", version.ref = "compose-unstyled" }
+icons-lucide = { module = "com.composables:icons-lucide", version.ref = "lucide" }
+markdown-renderer = { module = "com.mikepenz:multiplatform-markdown-renderer", version.ref = "markdown-renderer" }
+highlights = { module = "dev.snipme:highlights", version.ref = "highlights" }
+# The original JLaTeXMath, which the Android port comes from, for the desktop.
+jlatexmath = { module = "org.scilab.forge:jlatexmath", version = "1.0.7" }
+jlatexmath-android = { module = "ru.noties:jlatexmath-android", version.ref = "jlatexmath-android" }
+haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
+haze-blur = { module = "dev.chrisbanes.haze:haze-blur", version.ref = "haze" }
+
+# Lifecycle / ViewModel (KMP)
+lifecycle-viewmodel-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle-runtime-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+
+# Networking
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
+ktor-client-logging = { module = "io.ktor:ktor-client-logging", version.ref = "ktor" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+
+# Kotlinx
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+
+# DI
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+koin-compose-viewmodel = { module = "io.insert-koin:koin-compose-viewmodel", version.ref = "koin" }
+koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
+
+# Android
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
+androidx-browser = { module = "androidx.browser:browser", version.ref = "browser" }
+androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
+androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "fragment" }
+# The Health phone tool reads steps, sleep and heart rate from Health Connect.
+androidx-health-connect = { module = "androidx.health.connect:connect-client", version.ref = "health-connect" }
+
+# GPT-Live voice calls
+webrtc-android = { module = "io.github.webrtc-sdk:android", version.ref = "webrtc" }
+
+# Wear OS companion: the Data Layer on both sides, and the watch app's UI, tile and complication
+play-services-wearable = { module = "com.google.android.gms:play-services-wearable", version.ref = "play-services-wearable" }
+kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "kotlinx-coroutines" }
+wear-compose-material3 = { module = "androidx.wear.compose:compose-material3", version.ref = "wear-compose" }
+wear-compose-foundation = { module = "androidx.wear.compose:compose-foundation", version.ref = "wear-compose" }
+wear-compose-navigation = { module = "androidx.wear.compose:compose-navigation", version.ref = "wear-compose" }
+a2ui-compose-runtime = { module = "androidx.a2ui.compose:compose-runtime", version.ref = "a2ui" }
+a2ui-compose-ui = { module = "androidx.a2ui.compose:compose-ui", version.ref = "a2ui" }
+a2ui-material3 = { module = "androidx.compose.material3:material3-a2ui", version.ref = "a2ui" }
+# Only to theme the A2UI catalog's components: the version material3-a2ui brings.
+androidx-material3 = { module = "androidx.compose.material3:material3", version = "1.5.0-alpha28" }
+# The pictures, video and audio in an agent's screen.
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
+media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
+media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
+media3-datasource-okhttp = { module = "androidx.media3:media3-datasource-okhttp", version.ref = "media3" }
+androidx-concurrent-futures ={ module = "androidx.concurrent:concurrent-futures", version = "1.3.0" }
+wear-tiles = { module = "androidx.wear.tiles:tiles", version.ref = "wear-tiles" }
+wear-protolayout = { module = "androidx.wear.protolayout:protolayout", version.ref = "wear-protolayout" }
+wear-protolayout-material3 = { module = "androidx.wear.protolayout:protolayout-material3", version.ref = "wear-protolayout" }
+wear-complications-data-source = { module = "androidx.wear.watchface:watchface-complications-data-source-ktx", version.ref = "wear-complications" }
+
+# Offline cache
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+# The SQLite that Room uses on the desktop (Android keeps the system one).
+sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
+
+# Desktop app: Compose's Main dispatcher is the Swing event thread.
+kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
+# Windows DPAPI, which seals the desktop app's stored secrets.
+jna-platform = { module = "net.java.dev.jna:jna-platform", version = "5.15.0" }
+# The JetBrains Runtime's API: the desktop app draws its own title bar with the system's window buttons.
+jbr-api = { module = "com.jetbrains:jbr-api", version = "1.5.0" }
+# Compiled against only: the classes come from the JetBrains Runtime the app runs on, which must be a JCEF build of
+# the same API (1.21). JBR 25.0.4.1 b508.40 ships 144.0.15-…-api-1.21-262-b61; b37 is the nearest one published.
+jcef = { module = "org.jetbrains.intellij.deps.jcef:jcef", version = "144.0.15-g72717cf-chromium-144.0.7559.172-api-1.21-262-b37" }
+# The system's own Open and Save dialogs on the desktop (AWT's are the old-style ones on Windows).
+filekit-dialogs = { module = "io.github.vinceglb:filekit-dialogs", version = "0.16.0" }
+
+# Testing
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
+junit4 = { module = "junit:junit", version.ref = "junit4" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+# Host-rendered Compose tests: the same androidx Compose version the multiplatform build resolves.
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4", version.ref = "compose-multiplatform" }
+
+[plugins]
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+room = { id = "androidx.room", version.ref = "room" }
