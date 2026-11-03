@@ -37,8 +37,6 @@ internal class AndroidCallLater(
     private val armed = ConcurrentHashMap<String, Job>()
 
     override suspend fun whenDone(chatId: String, title: String?, reason: String, running: Boolean): Boolean {
-        // Ask the host first: its watch survives this app being closed or force-stopped, this one doesn't.
-        if (runCatching { api.watchWhenDone(chatId, title, reason) }.getOrDefault(false)) return true
         // Nothing in flight: the ring could never come, so the voice is told not to promise one. The turn that asked
         // counts as running whatever a live list that nobody has been collecting says; otherwise ask for a fresh one.
         val jobsRunning = jobs.jobs.value.any {
@@ -46,6 +44,8 @@ internal class AndroidCallLater(
         }
         val working = running || jobsRunning || withTimeoutOrNull(ASK_MS) { live.live.first { busy(chatId, it) } } != null
         if (!working) return false
+        // Ask the host first: its watch survives this app being closed or force-stopped, this one doesn't.
+        if (runCatching { api.watchWhenDone(chatId, title, reason) }.getOrDefault(false)) return true
         lateinit var watch: Job
         watch = scope.launch {
             try {
