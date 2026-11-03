@@ -7,6 +7,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.dsl.module
@@ -33,7 +34,10 @@ class ApkUpdates(private val context: Context, private val client: HttpClient) {
                 // The host's feed carries the hash itself; a GitHub release publishes it in a file beside the APK.
                 val expected = (update.sha256 ?: publishedSha(update.sha256Url))?.lowercase()
                     ?: return@runCatching null
-                val bytes = client.get(url).body<ByteArray>()
+                // GitHub answers the release's download with a 302 to the bytes; the shared client won't follow it.
+                val response = client.getFollowing(url)
+                if (!response.status.isSuccess()) return@runCatching null
+                val bytes = response.body<ByteArray>()
                 val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
                 val actual = digest.joinToString("") { "%02x".format(it) }
                 if (actual != expected) return@runCatching null
@@ -48,7 +52,9 @@ class ApkUpdates(private val context: Context, private val client: HttpClient) {
     private suspend fun publishedSha(url: String?): String? {
         if (url.isNullOrBlank()) return null
         return runCatching {
-            client.get(url).bodyAsText().trim().substringBefore(' ').takeIf { it.length == SHA_CHARS }?.lowercase()
+            val response = client.getFollowing(url)
+            if (!response.status.isSuccess()) return@runCatching null
+            response.bodyAsText().trim().substringBefore(' ').takeIf { it.length == SHA_CHARS }?.lowercase()
         }.getOrNull()
     }
 
