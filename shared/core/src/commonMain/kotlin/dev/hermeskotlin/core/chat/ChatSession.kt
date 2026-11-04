@@ -63,6 +63,35 @@ import kotlinx.serialization.json.put
 private const val CALL_START_INSTRUCTION =
     "This session is a live phone call: keep every answer to one or two spoken sentences, no lists, no markdown."
 
+/** How much of the chat a call is told about: enough that "this" has a referent, not enough to slow the first turn. */
+const val CALL_CONTEXT_CHARS = 1_500
+
+/**
+ * What a call is told about the chat it was started from, so "what's this new update about" has something to point at.
+ * The last few things said, oldest first, trimmed to fit: the call keeps its own empty session, so this note stands in
+ * for the history it deliberately doesn't carry.
+ */
+fun callContextNote(messages: List<ChatMessage>, limit: Int = CALL_CONTEXT_CHARS): String {
+    val lines = messages.mapNotNull { message ->
+        val (who, text) = when (message) {
+            is ChatMessage.User -> "They said" to message.text
+            is ChatMessage.Assistant -> "You answered" to message.text
+            else -> return@mapNotNull null
+        }
+        val said = text.replace(Regex("\\s+"), " ").trim()
+        if (said.isEmpty()) null else "$who: " + said.take(240).let { if (it.length < said.length) "$it…" else it }
+    }
+    val kept = ArrayDeque<String>()
+    var total = 0
+    for (line in lines.asReversed()) {
+        if (total + line.length > limit) break
+        kept.addFirst(line)
+        total += line.length + 1
+    }
+    if (kept.isEmpty()) return ""
+    return "The chat this call was started from, most recent last:\n" + kept.joinToString("\n")
+}
+
 class ChatSession(
     private val gateway: GatewayUrl,
     initialStoredId: String?,
@@ -90,7 +119,7 @@ class ChatSession(
      * history before the voice can say a word. The call's turns are saved back into this chat when it ends
      * ([dev.hermeskotlin.core.voice.VoiceCallSave]).
      */
-    fun callSession(): ChatSession = ChatSession(
+    fun callSession(context: String? = null): ChatSession = ChatSession(
         gateway = gateway,
         initialStoredId = null,
         initialTitle = null,
@@ -104,7 +133,9 @@ class ChatSession(
         // profile happens to default to.
         cwd = cwd,
         cache = cache,
-        startInstruction = { CALL_START_INSTRUCTION },
+        startInstruction = {
+            listOfNotNull(CALL_START_INSTRUCTION, context?.takeIf { it.isNotBlank() }).joinToString("\n\n")
+        },
         // Started here, as the chat host starts a chat it opens: without it nothing follows the gateway's events, and
         // an answer would be written on the host and never reach the voice.
     ).also { it.start() }

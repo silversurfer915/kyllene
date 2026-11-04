@@ -2,6 +2,7 @@ package dev.hermeskotlin.ui.voice
 
 import dev.hermeskotlin.core.chat.ChatMessage
 import dev.hermeskotlin.core.chat.ChatSession
+import dev.hermeskotlin.core.chat.callContextNote
 import dev.hermeskotlin.core.chat.ChatState
 import dev.hermeskotlin.core.chat.InputAnswers
 import dev.hermeskotlin.core.chat.InputRequest
@@ -340,7 +341,9 @@ class VoiceController(
     private suspend fun startLive(session: ChatSession, gateway: GatewayUrl, profile: String?, opener: CallReason?, onConnectionResult: suspend () -> Unit): Boolean {
         // The call runs in a session of its own, empty: a spoken request must not pay for this chat's whole history
         // before the voice can answer. Its turns go back into this chat when the call ends.
-        val callSession = session.callSession()
+        // Told what the chat was about, so "this" and "that update" have something to point at — the call itself stays
+        // empty, so the note is all it carries.
+        val callSession = session.callSession(callContextNote(session.state.value.messages))
         // Gemini Live first: it answers straight from this phone, and Hermes's requests come back through the call.
         val geminiCall = geminiLive?.create(callSession, gateway, profile, voiceJobs, chatLookup)
         val call = geminiCall ?: run {
