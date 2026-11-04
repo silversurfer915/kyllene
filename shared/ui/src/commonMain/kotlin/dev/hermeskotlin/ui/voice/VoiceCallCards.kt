@@ -62,7 +62,8 @@ internal fun VoiceCallCards(chatId: String?, reload: Any? = Unit, modifier: Modi
     var turns by remember(chatId) { mutableStateOf<Map<String, List<CallTurn>>>(emptyMap()) }
     var open by remember(chatId) { mutableStateOf<String?>(null) }
     LaunchedEffect(chatId, reload) {
-        val found = history.calls(chatId)
+        // One card per call, however the host happens to list them.
+        val found = history.calls(chatId).distinctBy { it.callId }
         calls = found
         turns = found.takeLast(SHOWN_CALLS).associate { call -> call.callId to history.turns(chatId, call.callId) }
     }

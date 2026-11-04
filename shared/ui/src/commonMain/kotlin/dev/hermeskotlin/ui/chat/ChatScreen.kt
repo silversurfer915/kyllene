@@ -1087,6 +1087,8 @@ internal fun ChatView(
                                     // The voice chat and dictation have the speaker and the microphone.
                                     canReadAloud = hasVoice && !voiceOn && !dictation.active,
                                     found = found,
+                                    voiceCallsChatId = state.storedSessionId,
+                                    voiceCallsReload = voiceChat.phase,
                                 )
                             }
                         }
@@ -1161,13 +1163,6 @@ internal fun ChatView(
                         .fillMaxWidth()
                         .onSizeChanged { dockHeight = it.height },
                 ) {
-                    // The calls that happened in this chat, above the composer: a call belongs to the conversation it
-                    // was made from, not to a session of its own.
-                    VoiceCallCards(
-                        chatId = state.storedSessionId,
-                        reload = voiceChat.phase,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    )
                     Dock(
                         hazeState = hazeState,
                         actions = actions,
@@ -1798,6 +1793,10 @@ private val FOLLOW_UP_PROMPTS = listOf(
 @Composable
 private fun Messages(
     messages: List<ChatMessage>,
+    /** The chat whose saved calls are drawn at its end; null before it has a session. */
+    voiceCallsChatId: String? = null,
+    /** Anything that changes when a call ends: the cards are read again then. */
+    voiceCallsReload: Any? = null,
     /** The conversation goes back further than [messages]; nearing the top loads the page before. */
     olderMessages: Boolean,
     loadingOlder: Boolean,
@@ -2075,6 +2074,15 @@ private fun Messages(
                     }
                     }
                 }
+            }
+            // A call made from this chat is part of it: drawn past the last message, so it scrolls with the words
+            // rather than floating over them.
+            item(key = "voice-calls") {
+                VoiceCallCards(
+                    chatId = voiceCallsChatId,
+                    reload = voiceCallsReload,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
             }
         }
         // Clear of the composer floating over the chat's end. Any press on it moves the list, even a click on its track.

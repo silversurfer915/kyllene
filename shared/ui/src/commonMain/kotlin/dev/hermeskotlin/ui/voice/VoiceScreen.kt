@@ -520,13 +520,13 @@ internal fun TranscriptSheet(lines: List<TranscriptLine>, onClose: () -> Unit) {
                 )
             } else {
                 Column(
-                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     lines.forEach { line ->
                         Text(
                             line.text,
-                            style = Theme[typography][body].copy(fontSize = 15.sp, lineHeight = 21.sp),
+                            style = Theme[typography][body].copy(fontSize = 16.sp, lineHeight = 24.sp),
                             color = if (line.fromVoice) Theme[colors][textColor] else Theme[colors][textSecondary],
                         )
                     }
