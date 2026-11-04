@@ -113,6 +113,8 @@ class ChatSession(
     sideTasks: List<ChatMessage.Command> = emptyList(),
     /** For a new chat: what it tells the agent first, out of sight (see `putStartInstruction`); read when it's created. */
     private val startInstruction: () -> String? = { null },
+    /** Born out of the session list: a live call's own session is machinery, not a chat to come back to. */
+    private val hidden: Boolean = false,
 ) {
     /**
      * A session of its own for a live call: empty, so the first spoken request isn't paid for by this chat's whole
@@ -136,6 +138,7 @@ class ChatSession(
         startInstruction = {
             listOfNotNull(CALL_START_INSTRUCTION, context?.takeIf { it.isNotBlank() }).joinToString("\n\n")
         },
+        hidden = true,
         // Started here, as the chat host starts a chat it opens: without it nothing follows the gateway's events, and
         // an answer would be written on the host and never reach the voice.
     ).also { it.start() }
@@ -2203,6 +2206,8 @@ class ChatSession(
                 picks.reasoningEffort?.let { put("reasoning_effort", it) }
                 picks.fast?.let { put("fast", it) }
                 putStartInstruction(instruction)
+                // The gateway takes it at creation, and the call then never appears in anyone's session list.
+                if (hidden) put("hidden", true)
             },
         ) as? JsonObject ?: error("Empty session.create reply")
         val runtimeId = result.string("session_id") ?: error("session.create returned no session_id")
