@@ -808,4 +808,26 @@ class PhoneToolsBridgeTest {
         assertEquals(listOf(listOf(PhoneTool.Battery.id)), plugin.reports)
         assertNull(s.bridge.status.value.detail)
     }
+
+    @Test
+    fun trustFromTheDashboardStopsThePhoneAsking() = runTest {
+        val s = setup(Runner(), on = listOf(PhoneTool.Battery))
+        val plugin = Plugin()
+        plugin.call("b".repeat(32), PhoneToolsBridge.TRUST_TOOL, buildJsonObject { put("trust", true) })
+        connect(s, plugin)
+        until { plugin.answers.isNotEmpty() }
+        assertEquals(true, s.settings.settings.value?.phoneTrust)
+        assertEquals("true", plugin.answers["b".repeat(32)]?.get("result")?.jsonObject?.get("trust")?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun trustTakesOnlyAYesOrANo() = runTest {
+        val s = setup(Runner(), on = listOf(PhoneTool.Battery))
+        val plugin = Plugin()
+        plugin.call("c".repeat(32), PhoneToolsBridge.TRUST_TOOL, buildJsonObject { put("trust", "maybe") })
+        connect(s, plugin)
+        until { plugin.answers.isNotEmpty() }
+        assertEquals("trust must be true or false.", plugin.error("c".repeat(32)))
+        assertEquals(false, s.settings.settings.value?.phoneTrust)
+    }
 }

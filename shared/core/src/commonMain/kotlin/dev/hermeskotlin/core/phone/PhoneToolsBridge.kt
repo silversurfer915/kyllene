@@ -39,6 +39,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonElement
@@ -127,9 +128,9 @@ class PhoneToolsBridge(
     /** A push said a call waits: fetch it now. */
     fun wake() {
         scope.launch {
-            if (connection.state.value is ConnectionState.Connected && settings.settings.value?.enabledPhoneTools().orEmpty().isNotEmpty()) {
-                drain()
-            }
+            // Not gated on the tools: the dashboard's "stop asking me each time" arrives the same way, and it
+            // matters most before anything is switched on.
+            if (connection.state.value is ConnectionState.Connected) drain()
         }
     }
 
@@ -351,6 +352,22 @@ class PhoneToolsBridge(
         scope.launch { startAll(listOf(request)) }
     }
 
+    /**
+     * `phone_trust` is not a tool: the user granting "stop asking" is a settings change, so it runs with the tools
+     * switched off too, and the answer says what the phone now does.
+     */
+    private suspend fun handleTrust(request: PhoneRequest) {
+        val trust = (request.args["trust"] as? JsonPrimitive)?.booleanOrNull
+        if (trust == null) {
+            finish(request.id)
+            answer(request.id, null, "trust must be true or false.", wait = ANSWER_WAIT_MS)
+            return
+        }
+        settings.update { it.copy(phoneTrust = trust) }
+        finish(request.id)
+        answer(request.id, buildJsonObject { put("trust", trust) }, null, wait = ANSWER_WAIT_MS)
+    }
+
     /** Starts each of [waiting] not already running or answered. */
     private suspend fun startAll(waiting: List<PhoneRequest>) = runningLock.withLock {
         for (request in waiting) {
@@ -361,6 +378,7 @@ class PhoneToolsBridge(
 
     private suspend fun handle(request: PhoneRequest) {
         val started = now()
+        if (request.tool == TRUST_TOOL) return handleTrust(request)
         val tool = PhoneTool.byId(request.tool)
         // Up to the gateway's own deadline, less a margin: the phone may look late (a poll, Doze), and an Allow
         // the agent would never hear of must not change the phone. Measured on the gateway's clock, so a phone
@@ -504,6 +522,8 @@ class PhoneToolsBridge(
         const val MAX_RECENT = 20
         const val TOO_LONG = "The phone took too long."
         const val SWITCHED_OFF = "The user turned this tool off on the phone."
+        /** Not a tool: what the dashboard sends to stop the phone asking before each change. */
+        const val TRUST_TOOL = "phone_trust"
         const val UNKNOWN_TOOL = "This version of Kyllene doesn't have that tool; the user can update Kyllene."
         private val WAITS_FOR_USER = setOf(State.NotInstalled, State.Outdated)
         private const val MAX_ANSWERED = 200

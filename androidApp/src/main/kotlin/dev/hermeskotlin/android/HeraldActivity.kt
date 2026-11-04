@@ -14,6 +14,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalUriHandler
@@ -107,6 +108,13 @@ class HeraldActivity : FragmentActivity() {
         setContent {
             val locked by appLock.locked.collectAsState()
             val asked by PhoneConfirmations.asking.collectAsState()
+            // Trusted ("don't ask me each time"): a question the app would draw is answered instead. Only here,
+            // where an activity is at hand — a question that has to reach the notification needs its tap anyway.
+            val trusted by settings.settings.collectAsState()
+            LaunchedEffect(asked.firstOrNull()?.key, trusted?.phoneTrust) {
+                val question = asked.firstOrNull() ?: return@LaunchedEffect
+                if (trusted?.phoneTrust == true) PhoneConfirmations.allow(question.key, this@HeraldActivity)
+            }
             val question = asked.firstOrNull()?.let { q ->
                 PhoneQuestion(
                     key = q.key,

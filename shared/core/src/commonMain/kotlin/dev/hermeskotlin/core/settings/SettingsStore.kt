@@ -145,6 +145,12 @@ data class AppSettings(
     /** The phone tools switched on, by gateway name (`PhoneTool.id`). Each starts off. */
     val phoneToolsOn: List<String> = emptyList(),
     /**
+     * Tools change the phone without their question while Kyllene is open. Anything Android only lets an app do
+     * from a tap (an alarm, a link, the share sheet) still asks, since the question is the tap. Set here or from
+     * the dashboard (`/herald-push trust on`).
+     */
+    val phoneTrust: Boolean = false,
+    /**
      * An approval or a question from a chat out of sight rings like an incoming call instead of a plain notification.
      * Only with [phoneTools] on (see [ringsForAnswers]). It only ever rings this phone: the agent never calls anyone.
      */

@@ -48,6 +48,8 @@ class PhoneToolsViewModel(
 
     fun setRings(on: Boolean) = store.update { it.copy(phoneRings = on) }
 
+    fun setTrust(on: Boolean) = store.update { it.copy(phoneTrust = on) }
+
     fun setRingsTalk(on: Boolean) = store.update { it.copy(phoneRingsTalk = on) }
 
     fun setWatchRings(on: Boolean) = store.update { it.copy(watchRings = on) }

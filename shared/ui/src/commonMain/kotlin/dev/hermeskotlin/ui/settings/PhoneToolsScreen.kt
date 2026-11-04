@@ -128,6 +128,7 @@ fun PhoneToolsScreen(onBack: () -> Unit, viewModel: PhoneToolsViewModel = koinVi
         onAllowOptional = access::requestOptional,
         places = places,
         onRemovePlace = viewModel::removePlace,
+        onTrust = viewModel::setTrust,
         onRings = { on ->
             viewModel.setRings(on)
             if (on && access.ringsMissing() != null) access.requestRings()
@@ -200,6 +201,7 @@ internal fun PhoneToolsView(
     places: List<WatchedPlace> = emptyList(),
     onRemovePlace: (String) -> Unit = {},
     onRings: (Boolean) -> Unit = {},
+    onTrust: (Boolean) -> Unit = {},
     ringsMissing: () -> String? = { null },
     onAllowRings: () -> Unit = {},
     onRingsTalk: (Boolean) -> Unit = {},
@@ -267,6 +269,18 @@ internal fun PhoneToolsView(
                         onCheckedChange = { on -> if (on) installAsked = true else onAll(false) },
                         icon = Lucide.Smartphone,
                     )
+                    if (settings.phoneTools) {
+                        Divider()
+                        SwitchRow(
+                            title = "Don't ask me each time",
+                            detail = "Tools change the phone without their question while Kyllene is open. Anything " +
+                                "Android only does from a tap, like an alarm or the share sheet, is still asked. " +
+                                "The dashboard can set this too.",
+                            checked = settings.phoneTrust,
+                            onCheckedChange = onTrust,
+                            icon = Lucide.ShieldCheck,
+                        )
+                    }
                     if (settings.phoneTools && status.state in setOf(State.NotInstalled, State.Failed)) {
                         Divider()
                         ActionRow("Set up on the gateway", Lucide.Wrench, onSetUp)
