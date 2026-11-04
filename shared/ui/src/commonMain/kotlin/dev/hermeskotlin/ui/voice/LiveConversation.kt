@@ -151,6 +151,14 @@ internal class LiveConversation(
                         if (event.fragment.speaker == LiveFragment.Speaker.Assistant) onConnectionResult()
                         transcript += event.fragment
                         if (transcript.size > MAX_FRAGMENTS) transcript.subList(0, transcript.size - KEPT_FRAGMENTS).clear()
+                        // The Transcript button reads the same words the captions do, just all of them.
+                        val line = TranscriptLine(
+                            fromVoice = event.fragment.speaker == LiveFragment.Speaker.Assistant,
+                            text = event.fragment.text.trim(),
+                        )
+                        if (line.text.isNotEmpty()) {
+                            state.update { it.copy(transcript = (it.transcript + line).takeLast(TRANSCRIPT_LINES)) }
+                        }
                         caption(event.fragment)
                         val fragment = event.fragment
                         if (asking != null) heard += fragment to (if (timed(fragment)) fragment.startMs else heard.lastOrNull()?.second ?: 0)
@@ -565,6 +573,8 @@ internal class LiveConversation(
         const val CONTEXT_FRAGMENTS = 80
         const val MAX_FRAGMENTS = 2_000
         const val KEPT_FRAGMENTS = 1_500
+        /** Lines the Transcript button keeps: a long call stays readable without holding the world. */
+        const val TRANSCRIPT_LINES = 400
         const val CAPTION_CHARS = 140
         /** How long the person's words may trail the voice handing their answer over. */
         const val WORDS_WAIT_MS = 2_000L

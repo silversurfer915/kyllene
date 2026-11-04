@@ -103,7 +103,12 @@ data class VoiceChatState(
     val card: CallCard? = null,
     /** A chat the voice asked to open: the call ends and that chat comes up. */
     val openChat: Pair<String, String>? = null,
+    /** Everything said in this call, oldest first, for the Transcript button. */
+    val transcript: List<TranscriptLine> = emptyList(),
 )
+
+/** One line of the call's transcript: whose words, and what they were. */
+data class TranscriptLine(val fromVoice: Boolean, val text: String)
 
 /** A card drawn on the call's screen: the voice's `show_on_screen`. Shown until it's replaced or hidden. */
 data class CallCard(val title: String, val body: String)

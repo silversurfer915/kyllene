@@ -1,5 +1,10 @@
 package dev.hermeskotlin.ui.voice
 
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.composables.icons.lucide.Square
+import com.composables.icons.lucide.MessageSquareText
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
@@ -142,6 +147,9 @@ internal fun VoiceScreen(
     onDismissCard: () -> Unit = {},
 ) {
     PlatformBackHandler(enabled = active, onBack = onMinimize)
+    // The call's own row of tools, as another voice app shows them: mute, stopping the voice mid-sentence, the way
+    // out, and the whole transcript.
+    var showTranscript by remember { mutableStateOf(false) }
     val glow = Theme[colors][accent].copy(alpha = 0.22f)
     BoxWithConstraints(
         Modifier
@@ -180,6 +188,9 @@ internal fun VoiceScreen(
             state.card?.let { card ->
                 DoneCard(card, onDismissCard, Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
             }
+            if (showTranscript) {
+                TranscriptSheet(state.transcript, onClose = { showTranscript = false })
+            }
             Transcript(
                 state,
                 lastReply,
@@ -204,20 +215,26 @@ internal fun VoiceScreen(
                         WorkingChip(state.working.orEmpty())
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    // Mute on the left in a call and a chained chat alike; an empty slot keeps End in the middle.
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (state.phase != VoicePhase.Connecting) {
                         SideButton(Lucide.Mic.takeUnless { state.muted } ?: Lucide.MicOff, "Mute", onMute, on = state.muted, toggle = true)
                     } else {
                         Spacer(Modifier.size(52.dp))
                     }
-                    EndButton(onEnd)
-                    // Skip and Send now are only there for a moment, so they stand in for Type instead meanwhile.
+                    // Stopping the voice is only an option while it speaks; otherwise the slot does what the call needs.
                     when {
-                        !state.live && state.phase == VoicePhase.Speaking -> SideButton(Lucide.SkipForward, "Skip the reply", onSkip)
+                        state.phase == VoicePhase.Speaking -> SideButton(Lucide.Square, "Interrupt", onSkip)
                         canSendNow(state) -> SideButton(Lucide.ArrowUp, "Send now", onSendNow)
                         else -> SideButton(Lucide.Keyboard, "Type instead", onType)
                     }
+                    EndButton(onEnd)
+                    SideButton(
+                        Lucide.MessageSquareText,
+                        if (showTranscript) "Hide the transcript" else "Show the transcript",
+                        { showTranscript = !showTranscript },
+                        on = showTranscript,
+                        toggle = true,
+                    )
                 }
             }
         }
@@ -469,3 +486,52 @@ internal fun tail(text: String, max: Int): String {
 
 private val BAR_HEIGHTS = listOf(18, 34, 24, 40, 20)
 private val BAR_ALPHAS = listOf(0.8f, 1f, 0.9f, 1f, 0.8f)
+
+/**
+ * Every line of the call so far, yours and the voice's, in order. Opened by the Transcript button, so a call can be
+ * re-read without ending it.
+ */
+@Composable
+private fun TranscriptSheet(lines: List<TranscriptLine>, onClose: () -> Unit) {
+    Surface(
+        Modifier.fillMaxSize(),
+        color = Theme[colors][background],
+    ) {
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RingButton(Lucide.X, "Close the transcript", onClose)
+                Text(
+                    "Transcript",
+                    style = Theme[typography][body].copy(fontSize = 15.sp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = Theme[colors][textColor],
+                    modifier = Modifier.weight(1f).padding(start = 8.dp),
+                )
+            }
+            if (lines.isEmpty()) {
+                Text(
+                    "Nothing said yet.",
+                    style = Theme[typography][body],
+                    color = Theme[colors][textTertiary],
+                    modifier = Modifier.padding(24.dp),
+                )
+            } else {
+                Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    lines.forEach { line ->
+                        Text(
+                            line.text,
+                            style = Theme[typography][body].copy(fontSize = 15.sp, lineHeight = 21.sp),
+                            color = if (line.fromVoice) Theme[colors][textColor] else Theme[colors][textSecondary],
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
