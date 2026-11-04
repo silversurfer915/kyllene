@@ -27,6 +27,9 @@ import kotlinx.serialization.json.putJsonObject
  * is that file's, not guessed.
  */
 @OptIn(ExperimentalEncodingApi::class)
+/** The only language the voice speaks, whatever the transcript guesses the user spoke. */
+const val SPOKEN_LANGUAGE = "en-US"
+
 object GeminiLiveProtocol {
     const val MODEL = "models/gemini-3.8-live"
     const val INPUT_SAMPLE_RATE = 16_000
@@ -82,8 +85,11 @@ object GeminiLiveProtocol {
 
             putJsonObject("generationConfig") {
                 putJsonArray("responseModalities") { add(JsonPrimitive("AUDIO")) }
-                if (!voice.isNullOrEmpty()) {
-                    putJsonObject("speechConfig") {
+                // The voice answers in US English whatever it thinks it heard: the transcript runs on its own guess
+                // at the language, and English misread as Spanish makes it answer in Spanish.
+                putJsonObject("speechConfig") {
+                    put("languageCode", SPOKEN_LANGUAGE)
+                    if (!voice.isNullOrEmpty()) {
                         putJsonObject("voiceConfig") {
                             putJsonObject("prebuiltVoiceConfig") { put("voiceName", voice) }
                         }
