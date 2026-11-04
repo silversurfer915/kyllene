@@ -239,32 +239,47 @@ private class GeminiLiveAdapter(
             }
         }
         announcer = announceFinishedWork()
+        // The first session has to be up before this returns: the screen leaves "Connecting" on it, and reads the
+        // event stream only afterwards.
+        val first = openSession(rejoining = false)
+        if (first == null) {
+            frames.trySend(error("Couldn't start the live call."))
+            frames.close()
+            return
+        }
+        // The rest of the call looks after itself: Google's rotations and dropped sockets are met with a new
+        // session, so the user keeps their call.
+        scope.launch(Dispatchers.IO) { supervise(first) }
+    }
+
+    /** Keeps a session open for as long as the call lasts: each one that ends is followed by another. */
+    private suspend fun supervise(first: CompletableDeferred<Unit>) {
+        var ended: CompletableDeferred<Unit>? = first
         var misses = 0
-        var first = true
         while (!hungUp) {
-            val ended = openSession(first)
-            first = false
-            if (ended == null) {
-                // Nothing opened: a spent token or no network. The first attempt is the user's answer; later
-                // ones get a few tries before the call is given up.
-                if (++misses > MAX_RECONNECTS) {
-                    frames.trySend(error("The call lost its connection."))
+            ended?.await() ?: return
+            ended = null
+            if (hungUp) return
+            delay(RECONNECT_PAUSE_MS)
+            while (ended == null && !hungUp) {
+                val next = openSession(rejoining = true)
+                if (next != null) {
+                    ended = next
                     break
                 }
+                if (++misses > MAX_RECONNECTS) {
+                    frames.trySend(error("The call lost its connection."))
+                    frames.close()
+                    return
+                }
                 delay(RECONNECT_BACKOFF_MS * misses)
-                continue
             }
             misses = 0
-            ended.await()
-            if (hungUp) break
-            // Google rotates a live session on its own clock. The next one carries the handle, so the call goes on.
-            delay(RECONNECT_PAUSE_MS)
         }
-        frames.close()
     }
 
     /** One Gemini session. Null when it couldn't be opened at all; otherwise it completes when the session ends. */
-    private suspend fun openSession(first: Boolean): CompletableDeferred<Unit>? {
+    private suspend fun openSession(rejoining: Boolean): CompletableDeferred<Unit>? {
         val token = when (val result = api.token(gateway, profile)) {
             is ApiResult.Success -> result.value
             else -> return null
@@ -274,7 +289,7 @@ private class GeminiLiveAdapter(
         try {
             socket.connect(token.connectionUrl(), token.token)
         } catch (e: Exception) {
-            if (first) frames.trySend(error(e.message ?: "Could not reach Gemini."))
+            if (!rejoining) frames.trySend(error(e.message ?: "Could not reach Gemini."))
             return null
         }
         transport = socket
@@ -289,7 +304,7 @@ private class GeminiLiveAdapter(
             ),
         )
         // A fresh session knows nothing of the call so far: told quietly, before anything else goes out.
-        if (!first) rejoin(socket)
+        if (rejoining) rejoin(socket)
         val done = CompletableDeferred<Unit>()
         receiver = scope.launch(Dispatchers.IO) {
             try {
