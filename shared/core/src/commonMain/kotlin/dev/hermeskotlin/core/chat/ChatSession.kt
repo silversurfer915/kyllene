@@ -103,7 +103,9 @@ class ChatSession(
         cwd = null,
         cache = cache,
         startInstruction = { CALL_START_INSTRUCTION },
-    )
+        // Started here, as the chat host starts a chat it opens: without it nothing follows the gateway's events, and
+        // an answer would be written on the host and never reach the voice.
+    ).also { it.start() }
 
     private fun nowSeconds(): Double = clock.now().toEpochMilliseconds() / 1000.0
 
