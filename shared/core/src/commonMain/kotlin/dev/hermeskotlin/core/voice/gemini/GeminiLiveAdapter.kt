@@ -213,7 +213,7 @@ private class GeminiLiveAdapter(
                 model = token.model,
                 systemInstruction = instructions(persona),
                 functions = listOf(ASK_HERMES) + (tools?.declarations() ?: emptyList()),
-                googleSearch = false,
+                googleSearch = true,
                 voice = voice ?: token.voice,
             ),
         )
@@ -251,9 +251,19 @@ private class GeminiLiveAdapter(
             GeminiLiveProtocol.ServerEvent.Interrupted -> audio.flush()
             is GeminiLiveProtocol.ServerEvent.InputTranscription ->
                 frames.send(transcript("session.input_transcript.delta", event.text))
-            is GeminiLiveProtocol.ServerEvent.OutputTranscription ->
+            is GeminiLiveProtocol.ServerEvent.OutputTranscription -> {
+                // A tool call read out loud is cut off at the markup: nothing ran, and the arguments would be read
+                // next. The model is asked for the call it meant, once the line is over.
+                if (markup.feed(event.text)) {
+                    audio.flush()
+                    transport?.let { socket ->
+                        scope.launch { runCatching { socket.send(GeminiLiveProtocol.textTurnMessage(SPOKEN_CALL_PROMPT)) } }
+                    }
+                }
                 frames.send(transcript("session.output_transcript.delta", event.text))
+            }
             is GeminiLiveProtocol.ServerEvent.ToolCall -> event.calls.forEach(::dispatch)
+            GeminiLiveProtocol.ServerEvent.TurnComplete -> markup.reset()
             else -> Unit
         }
     }
@@ -363,6 +373,16 @@ private class GeminiLiveAdapter(
                             scheduling = "WHEN_IDLE",
                         ),
                     )
+                }
+            }
+            // It sometimes stays silent instead of saying the line it was asked for, and the call then sounds
+            // dead while Hermes works. A second later, if nothing was said, it is told once, plainly.
+            val asked = System.currentTimeMillis()
+            scope.launch {
+                delay(ACK_GRACE_MS)
+                // Anything said after the call went out is the line that was asked for.
+                if (lastSpoken <= asked) {
+                    transport?.let { socket -> runCatching { socket.send(GeminiLiveProtocol.textTurnMessage(ACK_PROMPT)) } }
                 }
             }
             frames.send(
@@ -487,7 +507,20 @@ private class GeminiLiveAdapter(
         }
     }
 
+    /** The voice's own words this turn, watched for a tool call it reads out instead of running. */
+    private val markup = SpokenMarkupGuard()
+
     private companion object {
+        /** Hermes is working and the voice said nothing: asked, once, for the one line it promised. */
+        const val ACK_GRACE_MS = 1_200L
+        const val ACK_PROMPT =
+            "[Kyllene: Hermes is working and the line has gone quiet — say one short line now, like \"On it.\", " +
+                "then stay quiet until the answer arrives.]"
+        const val SPOKEN_CALL_PROMPT =
+            "[Kyllene: your last reply read a tool call out loud instead of calling it, so nothing ran. Kyllene cut " +
+                "the voice off there. Don't speak tool names or arguments: if you meant to use a tool, call it now " +
+                "as a function, and don't say it's done until its result comes back. Otherwise just carry on.]"
+
         const val SPEAKING_WINDOW_MS = 400L
         const val MAX_ANSWER_CHARS = 4_000
         const val PERSONA_CHARS = 6_000

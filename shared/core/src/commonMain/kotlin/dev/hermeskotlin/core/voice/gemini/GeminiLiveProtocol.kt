@@ -144,6 +144,13 @@ object GeminiLiveProtocol {
     }.toString()
 
     /** A text turn from the client, for updates whose function call is no longer open. */
+    /** What a model sometimes says instead of calling a tool: the call itself, read out loud. */
+    private val SPOKEN_TOOL_MARKERS = listOf("<tool_call", "</tool_call", "<function_call", "<|tool", "<tool_code")
+
+    /** Where the first spoken tool call starts in [text], if it has one; matched without case, as models vary. */
+    fun spokenToolMarkupStart(text: String): Int? =
+        SPOKEN_TOOL_MARKERS.mapNotNull { marker -> text.indexOf(marker, ignoreCase = true).takeIf { it >= 0 } }.minOrNull()
+
     fun textTurnMessage(text: String): String = clientContent(text, turnComplete = true)
 
     /** Context added without asking for a reply. */
