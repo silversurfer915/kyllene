@@ -2,6 +2,9 @@ package dev.hermeskotlin.android.notify
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.provider.Settings
+import android.os.Build
+import android.app.NotificationManager
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
@@ -367,6 +370,41 @@ class ChatNotifications(
             .build()
             // Rings on, as a call does, until it's answered, declined or rung out; else the ringtone plays once.
             .apply { flags = flags or Notification.FLAG_INSISTENT }
+            .also { nudgeFullScreen() }
+    }
+
+    /**
+     * Android 15 takes the full-screen-intent grant away every time a sideloaded app is updated, and only the user
+     * can give it back. When a call rings without it, a quiet notification says so and opens that one switch, so it
+     * is a tap rather than a hunt through Settings each update.
+     */
+    @SuppressLint("MissingPermission") // Only a nudge; posting is already gated by canPost elsewhere.
+    private fun nudgeFullScreen() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        if (nm.canUseFullScreenIntent()) {
+            nm.cancel(NUDGE_TAG, NUDGE_ID)
+            return
+        }
+        val open = PendingIntent.getActivity(
+            context,
+            0,
+            Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, "package:${context.packageName}".toUri()),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        nm.notify(
+            NUDGE_TAG,
+            NUDGE_ID,
+            NotificationCompat.Builder(context, CHANNEL_VOICE)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setColor(ContextCompat.getColor(context, R.color.notification_accent))
+                .setContentTitle("Full-screen calls are off")
+                .setContentText("Tap to allow Hermes calls to fill the screen — Android clears this on every update.")
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .setSilent(true)
+                .build(),
+        )
     }
 
     private fun callBuilder(call: Ringing, localOnly: Boolean, again: Boolean, why: String): NotificationCompat.Builder {
@@ -837,6 +875,8 @@ class ChatNotifications(
 
         /** Read by PhoneToolAccess too, to tell whether calls can ring. */
         private const val CHANNEL_CALLS = "calls"
+        private const val NUDGE_TAG = "full-screen"
+        private const val NUDGE_ID = 4711
         private const val RING_GRACE_MS = 5_000L
 
         /** A call from the agent's id, apart from the gateway's request ids. */

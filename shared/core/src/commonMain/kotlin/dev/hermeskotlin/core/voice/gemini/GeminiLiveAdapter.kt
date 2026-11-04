@@ -674,7 +674,7 @@ private class GeminiLiveAdapter(
         const val GOODBYE_POLL_MS = 50L
 
         /** Hermes is working and the voice said nothing: asked, once, for the one line it promised. */
-        const val ACK_GRACE_MS = 1_200L
+        const val ACK_GRACE_MS = 2_600L
         const val ACK_PROMPT =
             "[Kyllene: Hermes is working and the line has gone quiet — say one short line now, like \"On it.\", " +
                 "then stay quiet until the answer arrives.]"
