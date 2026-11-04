@@ -145,6 +145,13 @@ data class AppSettings(
     /** The phone tools switched on, by gateway name (`PhoneTool.id`). Each starts off. */
     val phoneToolsOn: List<String> = emptyList(),
     /**
+     * What a live call may use beyond the bare model, each its own switch as Conduit has them: Google Search for
+     * quick facts, this host's memory, and the user's personality in the instructions.
+     */
+    val voiceSearch: Boolean = true,
+    val voiceMemory: Boolean = true,
+    val voicePersonality: Boolean = true,
+    /**
      * Tools change the phone without their question while Kyllene is open. Anything Android only lets an app do
      * from a tap (an alarm, a link, the share sheet) still asks, since the question is the tap. Set here or from
      * the dashboard (`/herald-push trust on`).

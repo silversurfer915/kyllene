@@ -14,6 +14,7 @@ import dev.hermeskotlin.core.settings.SettingsStore
 import dev.hermeskotlin.core.voice.LiveCall
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
@@ -42,6 +43,17 @@ fun interface GeminiLiveCalls {
     ): LiveCall?
 }
 
+/**
+ * What a live call may use beyond the bare model, each its own switch in Settings → Voice, as Conduit has them:
+ * Google Search for quick facts, this host's memory for `recall_memory`, and the user's personality in the
+ * instructions. All three on unless the user turned one off.
+ */
+data class VoiceOptions(
+    val search: Boolean = true,
+    val memory: Boolean = true,
+    val personality: Boolean = true,
+)
+
 /** [GeminiLiveCalls] over the shared HTTP client. */
 class GeminiLiveCallsImpl(
     private val client: HttpClient,
@@ -60,8 +72,14 @@ class GeminiLiveCallsImpl(
         val status = GeminiLiveApi(client).status(gateway, profile)
         if (status !is ApiResult.Success || !status.value.available) return null
         val audio = createLiveAudio() ?: return null
-        val voice = settings.settings.value?.geminiVoice?.takeIf { it.isNotBlank() }
-        return GeminiLiveAdapter(client, gateway, profile, audio, voice, session, jobs, chats, callLater)
+        val current = settings.settings.value
+        val voice = current?.geminiVoice?.takeIf { it.isNotBlank() }
+        val options = VoiceOptions(
+            search = current?.voiceSearch ?: true,
+            memory = current?.voiceMemory ?: true,
+            personality = current?.voicePersonality ?: true,
+        )
+        return GeminiLiveAdapter(client, gateway, profile, audio, voice, session, jobs, chats, callLater, options)
     }
 }
 
@@ -88,6 +106,8 @@ private class GeminiLiveAdapter(
     private val chats: ChatLookup? = null,
     /** Rings this phone when the chat's work ends; null on a host with no phone to ring. */
     private val callLater: CallLater? = null,
+    /** What the call may use beyond the bare model: Conduit's switches, read from this app's settings. */
+    private val options: VoiceOptions = VoiceOptions(),
 ) : LiveCall {
     private val api = GeminiLiveApi(client)
 
@@ -113,7 +133,7 @@ private class GeminiLiveAdapter(
             stop = { runCatching { chat.interrupt() }.getOrDefault(emptyList()) },
             jobs = { snapshot(chat) },
             // Both routes live on the host's `conduit_push` plugin; a missing route is an honest "unavailable".
-            recall = { query -> loadMemory()?.let { VoiceToolBridge.memoryMatches(it, query) } },
+            recall = { query -> if (!options.memory) null else loadMemory()?.let { VoiceToolBridge.memoryMatches(it, query) } },
             search = { query -> api.webSearch(gateway, profile, query) },
             startJob = jobs?.let { registry -> { request -> registry.start(request, profile, gateway) } },
             jobList = { jobs?.jobs?.value.orEmpty() },
@@ -168,7 +188,14 @@ private class GeminiLiveAdapter(
     /** Hangs up once the voice has said goodbye: the frame the call's UI reads as "ended", then the socket. */
     private fun endAfterGoodbye() {
         scope.launch {
-            delay(GOODBYE_MS)
+            // The reply is owed to the user: hang up once the voice has said it and gone quiet, not on a timer.
+            val asked = System.currentTimeMillis()
+            val deadline = asked + GOODBYE_MAX_MS
+            while (System.currentTimeMillis() < deadline) {
+                val now = System.currentTimeMillis()
+                if (lastSpoken >= asked && now - lastSpoken >= GOODBYE_QUIET_MS) break
+                delay(GOODBYE_POLL_MS)
+            }
             runCatching { frames.send("""{"type":"session.closed","reason":"closed"}""") }
             close()
         }
@@ -177,9 +204,17 @@ private class GeminiLiveAdapter(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val frames = Channel<String>(Channel.BUFFERED)
 
-    private var transport: GeminiLiveTransport? = null
+    @Volatile private var transport: GeminiLiveTransport? = null
     private var pump: Job? = null
-    private var lastSpoken = 0L
+    private var receiver: Job? = null
+    private var announcer: Job? = null
+    @Volatile private var lastSpoken = 0L
+    /** The user hung up: no session is opened again. */
+    @Volatile private var hungUp = false
+    /** What Google needs to take this call over after it rotates the session. */
+    @Volatile private var resumeHandle: String? = null
+    /** The call's own words, kept short, for the session that takes over after a rotation. */
+    private val continuity = CallContinuity(SAID_CHARS, REJOIN_CHARS)
     private var level = 0f
     private var muted = false
 
@@ -190,54 +225,102 @@ private class GeminiLiveAdapter(
     override val events: ReceiveChannel<String> get() = frames
 
     override suspend fun connect(answer: suspend (offerSdp: String) -> String) {
-        val token = when (val result = api.token(gateway, profile)) {
-            is ApiResult.Success -> result.value
-            else -> {
-                frames.send(error("Gemini Live could not start on this host."))
-                frames.close()
-                return
+        audio.start { value -> level = value }
+        // The microphone is read once for the whole call: each session's socket takes its frames while it is up,
+        // so a reconnect doesn't restart it (and doesn't ask for the microphone again).
+        pump = scope.launch(Dispatchers.IO) {
+            while (true) {
+                val frame = audio.read() ?: break
+                val live = transport ?: continue
+                // A phone that can't cancel the speaker's echo would hear the voice through the microphone and
+                // cut it off for ever: there the microphone is held while it plays, as Conduit does.
+                if (!audio.cancelsEcho && System.currentTimeMillis() - lastSpoken < ECHO_TAIL_MS) continue
+                runCatching { live.send(GeminiLiveProtocol.audioMessage(frame)) }
             }
         }
-        val persona = api.personality(gateway, profile)
+        announcer = announceFinishedWork()
+        var misses = 0
+        var first = true
+        while (!hungUp) {
+            val ended = openSession(first)
+            first = false
+            if (ended == null) {
+                // Nothing opened: a spent token or no network. The first attempt is the user's answer; later
+                // ones get a few tries before the call is given up.
+                if (++misses > MAX_RECONNECTS) {
+                    frames.trySend(error("The call lost its connection."))
+                    break
+                }
+                delay(RECONNECT_BACKOFF_MS * misses)
+                continue
+            }
+            misses = 0
+            ended.await()
+            if (hungUp) break
+            // Google rotates a live session on its own clock. The next one carries the handle, so the call goes on.
+            delay(RECONNECT_PAUSE_MS)
+        }
+        frames.close()
+    }
+
+    /** One Gemini session. Null when it couldn't be opened at all; otherwise it completes when the session ends. */
+    private suspend fun openSession(first: Boolean): CompletableDeferred<Unit>? {
+        val token = when (val result = api.token(gateway, profile)) {
+            is ApiResult.Success -> result.value
+            else -> return null
+        }
+        val persona = if (options.personality) api.personality(gateway, profile) else null
         val socket = KtorGeminiLiveTransport(client, scope)
-        transport = socket
         try {
             socket.connect(token.connectionUrl(), token.token)
         } catch (e: Exception) {
-            frames.send(error(e.message ?: "Could not reach Gemini."))
-            frames.close()
-            return
+            if (first) frames.trySend(error(e.message ?: "Could not reach Gemini."))
+            return null
         }
+        transport = socket
         socket.send(
             GeminiLiveProtocol.setupMessage(
                 model = token.model,
                 systemInstruction = instructions(persona),
                 functions = listOf(ASK_HERMES) + (tools?.declarations() ?: emptyList()),
-                googleSearch = true,
+                googleSearch = options.search,
                 voice = voice ?: token.voice,
+                resumptionHandle = resumeHandle,
             ),
         )
-        audio.start { value -> level = value }
-        announceFinishedWork(socket)
-        pump = scope.launch(Dispatchers.IO) {
-            while (true) {
-                val frame = audio.read() ?: break
-                runCatching { socket.send(GeminiLiveProtocol.audioMessage(frame)) }.onFailure { break }
-            }
-        }
-        scope.launch(Dispatchers.IO) {
-            while (true) {
-                val frame = socket.receive() ?: break
-                for (event in GeminiLiveProtocol.decode(frame)) {
-                    // A tool the app mishandles must cost that one turn, not the whole call: this loop closing is
-                    // what "the voice went silent" looks like from the phone.
-                    runCatching { handle(event) }.onFailure { cause ->
-                        frames.trySend(error(cause.message ?: "Voice event failed."))
+        // A fresh session knows nothing of the call so far: told quietly, before anything else goes out.
+        if (!first) rejoin(socket)
+        val done = CompletableDeferred<Unit>()
+        receiver = scope.launch(Dispatchers.IO) {
+            try {
+                while (true) {
+                    val frame = socket.receive() ?: break
+                    for (event in GeminiLiveProtocol.decode(frame)) {
+                        // A tool the app mishandles must cost that one turn, not the whole call.
+                        runCatching { handle(event) }.onFailure { cause ->
+                            frames.trySend(error(cause.message ?: "Voice event failed."))
+                        }
                     }
                 }
+            } finally {
+                if (transport === socket) transport = null
+                done.complete(Unit)
             }
-            frames.close()
         }
+        return done
+    }
+
+    /** What a session that just took over is told: the call's recent words, and what Hermes is still doing. */
+    private suspend fun rejoin(socket: GeminiLiveTransport) {
+        val running = runCatching { jobs?.running().orEmpty().map { it.title } }.getOrDefault(emptyList())
+        runCatching { socket.send(GeminiLiveProtocol.contextNoteMessage(continuity.rejoinNote(running))) }
+    }
+
+    /** Ends this session so the loop opens the next one with [resumeHandle]. */
+    private fun rotate() {
+        val socket = transport ?: return
+        transport = null
+        scope.launch(Dispatchers.IO) { runCatching { socket.close() } }
     }
 
     private suspend fun handle(event: GeminiLiveProtocol.ServerEvent) {
@@ -249,9 +332,12 @@ private class GeminiLiveAdapter(
                 lastSpoken = System.currentTimeMillis()
             }
             GeminiLiveProtocol.ServerEvent.Interrupted -> audio.flush()
-            is GeminiLiveProtocol.ServerEvent.InputTranscription ->
+            is GeminiLiveProtocol.ServerEvent.InputTranscription -> {
+                continuity.note("them", event.text)
                 frames.send(transcript("session.input_transcript.delta", event.text))
+            }
             is GeminiLiveProtocol.ServerEvent.OutputTranscription -> {
+                continuity.note("you", event.text)
                 // A tool call read out loud is cut off at the markup: nothing ran, and the arguments would be read
                 // next. The model is asked for the call it meant, once the line is over.
                 if (markup.feed(event.text)) {
@@ -263,7 +349,17 @@ private class GeminiLiveAdapter(
                 frames.send(transcript("session.output_transcript.delta", event.text))
             }
             is GeminiLiveProtocol.ServerEvent.ToolCall -> event.calls.forEach(::dispatch)
-            GeminiLiveProtocol.ServerEvent.TurnComplete -> markup.reset()
+            GeminiLiveProtocol.ServerEvent.TurnComplete -> {
+                markup.reset()
+                continuity.turnEnded()
+            }
+            is GeminiLiveProtocol.ServerEvent.GoAway -> {
+                // Google is about to close this session: the next one is opened with the handle, at once.
+                val left = event.timeLeftSeconds ?: 0.0
+                if (left <= GOAWAY_SECONDS) rotate()
+            }
+            is GeminiLiveProtocol.ServerEvent.ResumptionUpdate ->
+                if (event.resumable) event.handle?.takeIf { it.isNotBlank() }?.let { resumeHandle = it }
             else -> Unit
         }
     }
@@ -301,9 +397,9 @@ private class GeminiLiveAdapter(
      * promise: every [ANNOUNCE_MS] the registry is brought up to date and anything that ended is sent in as a
      * line the model reads back in a sentence. Each job is announced once ([VoiceJobs.takeFinished]).
      */
-    private fun announceFinishedWork(socket: GeminiLiveTransport) {
-        val registry = jobs ?: return
-        scope.launch(Dispatchers.IO) {
+    private fun announceFinishedWork(): Job? {
+        val registry = jobs ?: return null
+        return scope.launch(Dispatchers.IO) {
             while (true) {
                 delay(ANNOUNCE_MS)
                 runCatching { registry.refresh() }
@@ -316,7 +412,10 @@ private class GeminiLiveAdapter(
                         job.result?.take(ANNOUNCE_RESULT_CHARS)?.let { append("Hermes answered: $it ") }
                         append("Tell the user in one short sentence.)")
                     }
-                    runCatching { socket.send(GeminiLiveProtocol.textTurnMessage(line)) }
+                    // The socket may have been replaced by a reconnect in between: the line goes to whichever is
+                    // up now, and is retried by the next announcement if there is none.
+                    val live = transport ?: continue
+                    runCatching { live.send(GeminiLiveProtocol.textTurnMessage(line)) }
                 }
             }
         }
@@ -463,8 +562,13 @@ private class GeminiLiveAdapter(
     }
 
     override fun close() {
+        hungUp = true
         pump?.cancel()
         pump = null
+        receiver?.cancel()
+        receiver = null
+        announcer?.cancel()
+        announcer = null
         val socket = transport
         transport = null
         scope.cancel()
@@ -511,6 +615,23 @@ private class GeminiLiveAdapter(
     private val markup = SpokenMarkupGuard()
 
     private companion object {
+        /** How long after the voice speaks the microphone stays held on a phone with no echo canceller. */
+        const val ECHO_TAIL_MS = 350L
+        /** Sessions opened in a row before the call gives up. */
+        const val MAX_RECONNECTS = 3
+        const val RECONNECT_BACKOFF_MS = 800L
+        /** A breath between a session ending and the next one, so Google isn't hammered. */
+        const val RECONNECT_PAUSE_MS = 250L
+        /** Google says how long a session has left before closing it; this close is taken over at once. */
+        const val GOAWAY_SECONDS = 20.0
+        /** The last stretch of the call a fresh session is told about. */
+        const val REJOIN_CHARS = 900
+        const val SAID_CHARS = 2_000
+        /** A goodbye waits for the reply it is owed, but not for ever. */
+        const val GOODBYE_MAX_MS = 12_000L
+        const val GOODBYE_QUIET_MS = 800L
+        const val GOODBYE_POLL_MS = 50L
+
         /** Hermes is working and the voice said nothing: asked, once, for the one line it promised. */
         const val ACK_GRACE_MS = 1_200L
         const val ACK_PROMPT =
@@ -530,7 +651,6 @@ private class GeminiLiveAdapter(
         const val ANNOUNCE_RESULT_CHARS = 300
 
         /** Time the voice gets to say goodbye after `end_conversation` before the call is closed. */
-        const val GOODBYE_MS = 1_800L
 
         val JSON = Json { ignoreUnknownKeys = true }
 

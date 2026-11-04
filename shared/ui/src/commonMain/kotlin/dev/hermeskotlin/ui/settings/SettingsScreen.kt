@@ -120,6 +120,7 @@ import com.composables.icons.lucide.Lightbulb
 import com.composables.icons.lucide.Lock
 import com.composables.icons.lucide.LogOut
 import com.composables.icons.lucide.Github
+import com.composables.icons.lucide.Sparkles
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.MessageCircle
 import com.composables.icons.lucide.MessageSquarePlus
@@ -657,6 +658,33 @@ internal fun SettingsView(
                             optionLabel = { it.wire },
                         )
                     }
+                    Divider()
+                    SwitchRow(
+                        title = "Search while talking",
+                        detail = "Quick facts — the weather, a score, who someone is — are answered by Google during the call " +
+                            "instead of waiting for a Hermes turn. Off, everything goes through Hermes.",
+                        checked = settings.voiceSearch,
+                        onCheckedChange = { on -> onUpdate { it.copy(voiceSearch = on) } },
+                        icon = Lucide.Search,
+                    )
+                    Divider()
+                    SwitchRow(
+                        title = "Use Hermes's memory",
+                        detail = "The call can look things up with recall_memory while you speak. Off, it remembers nothing " +
+                            "unless a request goes through Hermes.",
+                        checked = settings.voiceMemory,
+                        onCheckedChange = { on -> onUpdate { it.copy(voiceMemory = on) } },
+                        icon = Lucide.Brain,
+                    )
+                    Divider()
+                    SwitchRow(
+                        title = "Use your personality",
+                        detail = "The voice sounds like the personality you set on this host. Off, it speaks plainly, still " +
+                            "answering only through Hermes.",
+                        checked = settings.voicePersonality,
+                        onCheckedChange = { on -> onUpdate { it.copy(voicePersonality = on) } },
+                        icon = Lucide.Sparkles,
+                    )
                 }
 
                 if (isDesktop) Section("Desktop") {

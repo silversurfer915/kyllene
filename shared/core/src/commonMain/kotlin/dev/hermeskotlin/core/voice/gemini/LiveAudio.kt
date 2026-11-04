@@ -22,6 +22,12 @@ interface LiveAudio {
 
     fun setMuted(muted: Boolean)
 
+    /**
+     * Whether the phone cancels the speaker's echo out of the microphone. Where it doesn't, the microphone is
+     * held while the voice plays — the call would otherwise interrupt itself and never finish a sentence.
+     */
+    val cancelsEcho: Boolean get() = true
+
     /** Releases the microphone and the speaker. Safe to call twice. */
     fun stop()
 }
