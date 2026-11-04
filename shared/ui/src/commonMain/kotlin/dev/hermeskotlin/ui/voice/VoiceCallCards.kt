@@ -62,8 +62,8 @@ internal fun rememberShownCalls(chatId: String?, reload: Any? = Unit): List<Show
         // One card per call, however the host happens to list them.
         calls = history.calls(chatId).distinctBy { it.callId }.takeLast(SHOWN_CALLS).mapNotNull { call ->
             val turns = history.turns(chatId, call.callId)
-            val at = turns.mapNotNull { it.at }.minOrNull() ?: return@mapNotNull null
-            ShownCall(call.callId, at, turns)
+            // An undated call still gets its card; it simply lands at the end of the chat.
+            ShownCall(call.callId, turns.mapNotNull { it.at }.minOrNull(), turns)
         }
     }
     return calls

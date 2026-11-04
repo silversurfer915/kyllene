@@ -56,6 +56,8 @@ class VoiceCallSave(private val client: HttpClient, private val gateways: Gatewa
                     put("index", index)
                     put("role", turn.role)
                     put("text", turn.text.take(MAX_TURN_CHARS))
+                    // Without it the host can't say when the call happened, and the chat can't put its card in place.
+                    turn.at?.let { put("timestamp", it) }
                 }
             }
         }

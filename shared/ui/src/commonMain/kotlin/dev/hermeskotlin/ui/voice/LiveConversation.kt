@@ -63,6 +63,8 @@ internal class LiveConversation(
     private val interruptOnRequest: Boolean = true,
 ) {
     private val transcript = ArrayList<LiveFragment>()
+    /** When this call began, in epoch ms: a turn's offset is measured from it. */
+    private val startedAtMs = System.currentTimeMillis()
     private var eventSeq = 0
     private var delegation: Job? = null
     private var delegationId: String? = null
@@ -270,10 +272,19 @@ internal class LiveConversation(
         }
     }
 
-    /** What was said on the call, in order: what the chat it came from is given when it ends. */
+    /**
+     * What was said on the call, in order, each line dated: what the chat it came from is given when it ends. The date
+     * is the call's own start plus the fragment's offset, so the chat can put the call where it happened.
+     */
     fun turns(): List<CallTurn> = transcript
         .filter { it.text.isNotBlank() }
-        .map { CallTurn(if (it.speaker == LiveFragment.Speaker.User) "user" else "assistant", it.text) }
+        .map { fragment ->
+            CallTurn(
+                role = if (fragment.speaker == LiveFragment.Speaker.User) "user" else "assistant",
+                text = fragment.text,
+                at = (startedAtMs + fragment.startMs) / 1000.0,
+            )
+        }
 
     fun setMuted(muted: Boolean) {
         call.setMuted(muted)
