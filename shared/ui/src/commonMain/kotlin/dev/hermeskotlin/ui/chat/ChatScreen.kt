@@ -308,6 +308,7 @@ import dev.hermeskotlin.ui.keysLabel
 import androidx.compose.foundation.layout.BoxWithConstraints
 import dev.hermeskotlin.ui.pet.rememberPetState
 import dev.hermeskotlin.ui.voice.DictationState
+import dev.hermeskotlin.ui.voice.VoiceCallCards
 import dev.hermeskotlin.ui.voice.ReadAloudState
 import dev.hermeskotlin.ui.voice.VoiceChatState
 import dev.hermeskotlin.ui.voice.VoicePanel
@@ -1160,6 +1161,13 @@ internal fun ChatView(
                         .fillMaxWidth()
                         .onSizeChanged { dockHeight = it.height },
                 ) {
+                    // The calls that happened in this chat, above the composer: a call belongs to the conversation it
+                    // was made from, not to a session of its own.
+                    VoiceCallCards(
+                        chatId = state.storedSessionId,
+                        reload = voiceChat.phase,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
                     Dock(
                         hazeState = hazeState,
                         actions = actions,

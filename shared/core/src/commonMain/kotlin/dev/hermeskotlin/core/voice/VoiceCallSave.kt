@@ -14,8 +14,8 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
-/** One thing said on a call, and who said it. */
-data class CallTurn(val role: String, val text: String)
+/** One thing said on a call, and who said it. [at] is when, in epoch seconds, where the host knows. */
+data class CallTurn(val role: String, val text: String, val at: Double? = null)
 
 /**
  * Saves a live call to the chat it was started from, through the host's `conduit_push` plugin:

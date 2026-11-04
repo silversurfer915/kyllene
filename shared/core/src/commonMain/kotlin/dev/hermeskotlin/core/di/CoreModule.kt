@@ -178,6 +178,7 @@ val coreModule = module {
     // The user's own host, over the signed-in client: its /update route needs the session cookie.
     single { HostUpdates(get(), get()) }
     single { dev.hermeskotlin.core.voice.VoiceCallSave(get(), get()) }
+    single { dev.hermeskotlin.core.voice.VoiceCallHistory(get(), get()) }
     single { RenameNotice(get(), get()) }
     // ntfy is someone else's server: never send it the gateway's cookies.
     single { NtfyClient(get(named(OUTSIDE_CLIENT))) }

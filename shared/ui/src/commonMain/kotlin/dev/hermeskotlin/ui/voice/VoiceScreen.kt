@@ -492,7 +492,7 @@ private val BAR_ALPHAS = listOf(0.8f, 1f, 0.9f, 1f, 0.8f)
  * re-read without ending it.
  */
 @Composable
-private fun TranscriptSheet(lines: List<TranscriptLine>, onClose: () -> Unit) {
+internal fun TranscriptSheet(lines: List<TranscriptLine>, onClose: () -> Unit) {
     Surface(
         Modifier.fillMaxSize(),
         color = Theme[colors][background],
