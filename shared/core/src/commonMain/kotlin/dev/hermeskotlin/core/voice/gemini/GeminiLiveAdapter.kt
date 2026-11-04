@@ -209,6 +209,11 @@ private class GeminiLiveAdapter(
     private var receiver: Job? = null
     private var announcer: Job? = null
     @Volatile private var lastSpoken = 0L
+    /** Calls Gemini withdrew (the user spoke over a lookup): their answer must not go out afterwards. */
+    private val withdrawn = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    /** When the user last said something: what an acknowledgement is measured against. */
+    @Volatile private var lastHeard = 0L
+
     /** The user hung up: no session is opened again. */
     @Volatile private var hungUp = false
     /** What Google needs to take this call over after it rotates the session. */
@@ -346,8 +351,13 @@ private class GeminiLiveAdapter(
                 audio.play(event.pcm, event.sampleRate)
                 lastSpoken = System.currentTimeMillis()
             }
-            GeminiLiveProtocol.ServerEvent.Interrupted -> audio.flush()
+            GeminiLiveProtocol.ServerEvent.Interrupted -> {
+                audio.flush()
+                // The turn it was reading is over: whatever it says next starts clean.
+                markup.reset()
+            }
             is GeminiLiveProtocol.ServerEvent.InputTranscription -> {
+                lastHeard = System.currentTimeMillis()
                 continuity.note("them", event.text)
                 frames.send(transcript("session.input_transcript.delta", event.text))
             }
@@ -364,6 +374,7 @@ private class GeminiLiveAdapter(
                 frames.send(transcript("session.output_transcript.delta", event.text))
             }
             is GeminiLiveProtocol.ServerEvent.ToolCall -> event.calls.forEach(::dispatch)
+            is GeminiLiveProtocol.ServerEvent.ToolCallCancellation -> withdrawn.addAll(event.ids)
             GeminiLiveProtocol.ServerEvent.TurnComplete -> {
                 markup.reset()
                 continuity.turnEnded()
@@ -381,6 +392,7 @@ private class GeminiLiveAdapter(
 
     /** A tool the model called: the chat's own delegation, or one the bridge answers directly. */
     private fun dispatch(call: GeminiLiveProtocol.FunctionCall) {
+        if (withdrawn.remove(call.id)) return
         if (call.name == ASK_HERMES.name) return delegate(call)
         val bridge = tools ?: return answer(call, failure("That isn't something I can do on this call."))
         scope.launch {
@@ -397,6 +409,7 @@ private class GeminiLiveAdapter(
     }
 
     private fun answer(call: GeminiLiveProtocol.FunctionCall, result: JsonObject) {
+        if (withdrawn.remove(call.id)) return
         val socket = transport ?: return
         scope.launch {
             runCatching {
@@ -492,10 +505,11 @@ private class GeminiLiveAdapter(
             // It sometimes stays silent instead of saying the line it was asked for, and the call then sounds
             // dead while Hermes works. A second later, if nothing was said, it is told once, plainly.
             val asked = System.currentTimeMillis()
+            val requestedAt = minOf(asked, lastHeard)
             scope.launch {
                 delay(ACK_GRACE_MS)
-                // Anything said after the call went out is the line that was asked for.
-                if (lastSpoken <= asked) {
+                // Anything said since the user asked is the line that was asked for.
+                if (lastSpoken <= requestedAt) {
                     transport?.let { socket -> runCatching { socket.send(GeminiLiveProtocol.textTurnMessage(ACK_PROMPT)) } }
                 }
             }
@@ -622,6 +636,11 @@ private class GeminiLiveAdapter(
         append("Just before ask_hermes, say one short line — \"one second\", \"checking\" — and say it once: never ")
         append("repeat a progress line, never invent what Hermes is doing. When the answer comes back, give it in a ")
         append("sentence or two.\n\n")
+        append("Beyond ask_hermes you have tools of your own, all of them answered on this phone: start_job for work ")
+        append("that runs in the background (say you've started it, then carry on), list_jobs and read_last_reply ")
+        append("when they ask about it, recall_memory for what Hermes remembers, find_chat and read_chat for their ")
+        append("earlier conversations, show_on_screen for anything better seen than heard — a table, a list, a place — ")
+        append("set_ask_first when they say to stop asking, and call_me_when_done to ring them when the work ends.\n\n")
         append("Never speak while they are speaking: if they interrupt, stop and listen. If you have nothing useful ")
         append("to add, stay quiet rather than filling the pause. You speak first only to greet them, to answer ")
         append("\"can you hear me\", or to ask them to repeat something.\n\n")
