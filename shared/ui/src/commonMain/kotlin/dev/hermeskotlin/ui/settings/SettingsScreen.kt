@@ -741,7 +741,11 @@ internal fun SettingsView(
                                 icon = Lucide.BellRing,
                                 onClick = { access.requestRings() },
                             )
-                            InfoRow("Calls", rings)
+                            InfoRow("Calls over the lock screen", rings)
+                            Divider()
+                        } else {
+                            // Said out loud, so its absence is an answer rather than a question.
+                            InfoRow("Calls over the lock screen", "Allowed")
                             Divider()
                         }
                     }
