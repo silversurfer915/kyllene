@@ -308,7 +308,10 @@ import dev.hermeskotlin.ui.keysLabel
 import androidx.compose.foundation.layout.BoxWithConstraints
 import dev.hermeskotlin.ui.pet.rememberPetState
 import dev.hermeskotlin.ui.voice.DictationState
-import dev.hermeskotlin.ui.voice.VoiceCallCards
+import dev.hermeskotlin.ui.voice.CallTranscript
+import dev.hermeskotlin.ui.voice.CallCard
+import dev.hermeskotlin.ui.voice.rememberShownCalls
+import dev.hermeskotlin.ui.voice.ShownCall
 import dev.hermeskotlin.ui.voice.ReadAloudState
 import dev.hermeskotlin.ui.voice.VoiceChatState
 import dev.hermeskotlin.ui.voice.VoicePanel
@@ -1068,6 +1071,7 @@ internal fun ChatView(
                             LocalCommentHost provides commentHost,
                         ) {
                             key(conversationKey) {
+                                val voiceCalls = rememberShownCalls(state.storedSessionId, voiceChat.phase)
                                 Messages(
                                     listed,
                                     olderMessages = state.olderMessages,
@@ -1087,8 +1091,7 @@ internal fun ChatView(
                                     // The voice chat and dictation have the speaker and the microphone.
                                     canReadAloud = hasVoice && !voiceOn && !dictation.active,
                                     found = found,
-                                    voiceCallsChatId = state.storedSessionId,
-                                    voiceCallsReload = voiceChat.phase,
+                                    voiceCalls = voiceCalls,
                                 )
                             }
                         }
@@ -1793,10 +1796,8 @@ private val FOLLOW_UP_PROMPTS = listOf(
 @Composable
 private fun Messages(
     messages: List<ChatMessage>,
-    /** The chat whose saved calls are drawn at its end; null before it has a session. */
-    voiceCallsChatId: String? = null,
-    /** Anything that changes when a call ends: the cards are read again then. */
-    voiceCallsReload: Any? = null,
+    /** The chat's saved calls, drawn where each was placed. */
+    voiceCalls: List<ShownCall> = emptyList(),
     /** The conversation goes back further than [messages]; nearing the top loads the page before. */
     olderMessages: Boolean,
     loadingOlder: Boolean,
@@ -1980,6 +1981,18 @@ private fun Messages(
         // The list spans the pane, so the wheel and the scrollbar work at its edges; what's read keeps to the
         // reading width in the middle. Desktop messages sit a little closer together, as a pointer's eye reads them.
         val side = 16.dp + ((maxWidth - READING_WIDTH) / 2).coerceAtLeast(0.dp)
+        // A call belongs where it was placed: its card goes above the first message that came after it, and any
+        // with no later message go last.
+        val callsByIndex = remember(messages, voiceCalls) {
+            val byIndex = HashMap<Int, MutableList<ShownCall>>()
+            voiceCalls.forEach { call ->
+                val at = call.at ?: return@forEach
+                val index = messages.indexOfFirst { message -> (message.time ?: Double.MAX_VALUE) > at }
+                byIndex.getOrPut(if (index < 0) messages.size else index) { mutableListOf() } += call
+            }
+            byIndex
+        }
+        var openCall by remember { mutableStateOf<ShownCall?>(null) }
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize().nestedScroll(readBack),
@@ -1997,6 +2010,7 @@ private fun Messages(
                     messages.getOrNull(index + 1)?.key != unreadLine
                 val rail = partner?.let { name -> faces.find(name)?.let { Color(0xFF000000 or botLook(it).color.toLong()) } }
                 Column {
+                    callsByIndex[index]?.forEach { call -> CallCard(call) { openCall = call } }
                     // The line marking where the new messages start sits on top of the first of them.
                     if (divided) UnreadDivider(Modifier.padding(bottom = 20.dp))
                     // Drawn just outside the message, so marking it doesn't move a line of it.
@@ -2075,16 +2089,16 @@ private fun Messages(
                     }
                 }
             }
-            // A call made from this chat is part of it: drawn past the last message, so it scrolls with the words
-            // rather than floating over them.
-            item(key = "voice-calls") {
-                VoiceCallCards(
-                    chatId = voiceCallsChatId,
-                    reload = voiceCallsReload,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
+            // Calls made after the last message.
+            if (callsByIndex[messages.size]?.isNotEmpty() == true) {
+                item(key = "voice-calls-last") {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        callsByIndex[messages.size].orEmpty().forEach { call -> CallCard(call) { openCall = call } }
+                    }
+                }
             }
         }
+        openCall?.let { call -> CallTranscript(call) { openCall = null } }
         // Clear of the composer floating over the chat's end. Any press on it moves the list, even a click on its track.
         VerticalScrollbar(
             listState,
@@ -4396,3 +4410,12 @@ private fun Modifier.trimEndTop(end: Dp, top: Dp) = layout { measurable, constra
 /** What [trimEndTop] leaves of a [width] by [height] element, never below nothing: the largest text can squeeze one narrower than its trim. */
 internal fun trimmedSize(width: Int, height: Int, end: Int, top: Int): IntSize =
     IntSize((width - end).coerceAtLeast(0), (height - top).coerceAtLeast(0))
+
+/** When a message was said, where the transcript dates it: a call sorts against these. */
+private val ChatMessage.time: Double?
+    get() = when (this) {
+        is ChatMessage.User -> timestamp
+        is ChatMessage.Assistant -> timestamp
+        is ChatMessage.Event -> timestamp
+        else -> null
+    }
