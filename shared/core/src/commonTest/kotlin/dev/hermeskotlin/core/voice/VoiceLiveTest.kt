@@ -6,6 +6,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
@@ -115,5 +116,25 @@ class VoiceLiveTest {
         assertEquals(LiveEvent.OpenChat("s-1", "the build"), event)
         // A frame with no chat is not a request at all.
         assertNull(parseLiveEvent("""{"type":"screen.open_chat","title":"the build"}"""))
+    }
+
+    @Test
+    fun a_clause_can_be_spoken_before_its_sentence_ends() {
+        val reply = "The deploy finished, and two tests failed on the auth path."
+        val cut = speakableClauseCut(reply)
+        assertEquals("The deploy finished, ", reply.substring(0, cut))
+    }
+
+    @Test
+    fun a_clause_cut_never_splits_a_thousands_separator() {
+        assertEquals("It passed, ", "It passed, 3,000 times".substring(0, speakableClauseCut("It passed, 3,000 times")))
+        assertTrue(speakableClauseCut("The run took 3,000 seconds, then stopped.") > 0)
+        assertEquals(0, speakableClauseCut("no punctuation here at all"))
+    }
+
+    @Test
+    fun code_and_links_are_left_to_the_sentence_cut() {
+        assertEquals(0, speakableClauseCut("Run `make test`, then push."))
+        assertEquals(0, speakableClauseCut("See [the docs](https://x.y), then push."))
     }
 }

@@ -139,6 +139,22 @@ fun commentaryChunks(text: String, limit: Int = LIVE_APPEND_CHARS): List<String>
  * open before it (a code fence, a link, a table row). Markdown only turns quiet once it's closed, so the
  * part before the cut reads the same when the reply is done. 0 when there is no such place yet.
  */
+/**
+ * The first place a reply still streaming can be spoken up to, ahead of [speakableCut]'s whole sentence: a comma,
+ * semicolon, colon or dash with a space after it. 0 when there is none, or when the text holds anything a clause
+ * split could break — code, a link — which the sentence cut handles instead.
+ */
+fun speakableClauseCut(markdown: String): Int {
+    if (markdown.contains('`') || markdown.contains('[')) return 0
+    for (i in markdown.indices) {
+        val c = markdown[i]
+        if (c != ',' && c != ';' && c != ':' && c != '\u2014') continue
+        // A space has to follow, so thousands separators and URLs are never split.
+        if (i + 1 < markdown.length && markdown[i + 1] == ' ') return i + 2
+    }
+    return 0
+}
+
 fun speakableCut(markdown: String): Int {
     var cut = 0
     var fenced = false

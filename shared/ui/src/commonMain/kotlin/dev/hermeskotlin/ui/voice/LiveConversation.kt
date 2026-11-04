@@ -22,6 +22,7 @@ import dev.hermeskotlin.core.voice.delegationPrompt
 import dev.hermeskotlin.core.voice.isVoiceStopCommand
 import dev.hermeskotlin.core.voice.liveHistory
 import dev.hermeskotlin.core.voice.parseLiveEvent
+import dev.hermeskotlin.core.voice.speakableClauseCut
 import dev.hermeskotlin.core.voice.speakableCut
 import dev.hermeskotlin.core.voice.speakableText
 import kotlinx.coroutines.CancellationException
@@ -362,8 +363,10 @@ internal class LiveConversation(
             replies.forEachIndexed { i, reply ->
                 val before = spoken.getOrNull(i).orEmpty()
                 val from = if (reply.text.startsWith(before)) before.length else reply.text.length
-                // A reply still streaming goes a whole sentence at a time; a finished one goes to its end.
-                val end = maxOf(from, if (reply.streaming && chat.running) speakableCut(reply.text) else reply.text.length)
+                // A reply still streaming goes a clause at a time where it can, else a whole sentence; a finished
+                // one goes to its end. Speaking the first clause sooner is what makes the wait feel short.
+                val streamed = speakableClauseCut(reply.text).takeIf { it > from } ?: speakableCut(reply.text)
+                val end = maxOf(from, if (reply.streaming && chat.running) streamed else reply.text.length)
                 if (end > from) spokeAny = speak(id, reply.text.substring(from, end)) || spokeAny
                 if (i < spoken.size) spoken[i] = reply.text.substring(0, end) else spoken += reply.text.substring(0, end)
             }

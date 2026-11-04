@@ -633,9 +633,10 @@ private class GeminiLiveAdapter(
         append("calendar, accounts), anything they told Hermes before, anything to start or change (work to run, ")
         append("things to open), and anything about this call. Pass the whole request in their words. Never guess a ")
         append("personal fact: ask Hermes, or say you don't know.\n\n")
-        append("Just before ask_hermes, say one short line — \"one second\", \"checking\" — and say it once: never ")
-        append("repeat a progress line, never invent what Hermes is doing. When the answer comes back, give it in a ")
-        append("sentence or two.\n\n")
+        append("Just before ask_hermes, say one short line that names what you're looking up, in their words — ")
+        append("\"I'm talking about the 0.9.2 update — checking on that release now\", not a bare \"one second\". ")
+        append("Say it once: never repeat a progress line, never invent what Hermes is doing. When the answer comes ")
+        append("back, give it in a sentence or two.\n\n")
         append("Beyond ask_hermes you have tools of your own, all of them answered on this phone: start_job for work ")
         append("that runs in the background (say you've started it, then carry on), list_jobs and read_last_reply ")
         append("when they ask about it, recall_memory for what Hermes remembers, find_chat and read_chat for their ")
@@ -676,7 +677,8 @@ private class GeminiLiveAdapter(
         /** Hermes is working and the voice said nothing: asked, once, for the one line it promised. */
         const val ACK_GRACE_MS = 2_600L
         const val ACK_PROMPT =
-            "[Kyllene: Hermes is working and the line has gone quiet — say one short line now, like \"On it.\", " +
+            "[Kyllene: Hermes is working and the line has gone quiet — say one short line now that names what " +
+            "you're looking up, in their words (\"Checking on that release now\"), not a bare \"On it.\", " +
                 "then stay quiet until the answer arrives.]"
         const val SPOKEN_CALL_PROMPT =
             "[Kyllene: your last reply read a tool call out loud instead of calling it, so nothing ran. Kyllene cut " +
