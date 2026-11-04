@@ -213,6 +213,7 @@ import dev.hermeskotlin.core.gateway.CheckStage
 import dev.hermeskotlin.core.gateway.StageResult
 import dev.hermeskotlin.ui.connect.ConnectionChecklist
 import dev.hermeskotlin.ui.sessions.SubpageHeader
+import dev.hermeskotlin.ui.update.LocalUpdateOffer
 import dev.hermeskotlin.ui.update.UpdateBanner
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.math.roundToInt
@@ -729,6 +730,21 @@ internal fun SettingsView(
                         installAsked = false
                         onPushAnywhere(true)
                     }
+                    // Android 15 clears the full-screen grant on every sideloaded update: it costs one tap, and this is
+                    // where that tap is offered while it is missing.
+                    if (!isDesktop) {
+                        val access = rememberPhoneToolAccess()
+                        val rings = access.ringsMissing()
+                        if (rings != null) {
+                            ActionRow(
+                                title = "Allow calls to fill the screen",
+                                icon = Lucide.BellRing,
+                                onClick = { access.requestRings() },
+                            )
+                            InfoRow("Calls", rings)
+                            Divider()
+                        }
+                    }
                     SwitchRow(
                         title = "Approvals and questions",
                         detail = if (isDesktop) "When the agent waits on you and Kyllene isn't the window in use." else "When the agent waits on you. Answer right from the notification.",
@@ -855,6 +871,29 @@ internal fun SettingsView(
                         icon = Lucide.RefreshCw,
                     )
                     if (settingShown("Check for updates")) UpdateBanner(Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                    // The app looked only as it opened: a build published since then needed a restart to be seen.
+                    val offer = LocalUpdateOffer.current
+                    val lookNow = rememberCoroutineScope()
+                    var checking by remember { mutableStateOf(false) }
+                    var checked by remember { mutableStateOf<String?>(null) }
+                    ActionRow(
+                        title = if (checking) "Checking for updates…" else "Check for updates now",
+                        icon = Lucide.RefreshCw,
+                        onClick = {
+                            if (checking) return@ActionRow
+                            checking = true
+                            checked = null
+                            lookNow.launch {
+                                offer.recheck()
+                                checking = false
+                                checked = if (offer.update != null) "A newer build is ready — see the card above." else "You're on the newest build."
+                            }
+                        },
+                    )
+                    checked?.let {
+                        Divider()
+                        InfoRow("Updates", it)
+                    }
                     Divider()
                     InfoRow("Gateway", info.version?.let { "Hermes $it" } ?: "Checking…")
                     Divider()

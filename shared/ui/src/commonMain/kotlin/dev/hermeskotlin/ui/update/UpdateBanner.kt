@@ -51,7 +51,26 @@ import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 /** A newer release, if one was found, and a way to stop offering it. */
-class UpdateOffer(val update: AppUpdate?, val onDismiss: () -> Unit)
+/**
+ * What the app is being offered. [recheck] asks again now, for the button in Settings: the app used to look only as it
+ * opened, so a build published while it was running needed a restart to be seen.
+ */
+class UpdateOffer(
+    update: AppUpdate?,
+    onDismiss: () -> Unit = {},
+    recheck: suspend () -> Unit = {},
+) {
+    var onDismiss: () -> Unit = onDismiss
+    var recheck: suspend () -> Unit = recheck
+    private val state = mutableStateOf(update)
+
+    /** What is being offered now, recheck included: a snapshot would leave Settings reading the first answer for ever. */
+    val update: AppUpdate? get() = state.value
+
+    fun set(update: AppUpdate?) {
+        state.value = update
+    }
+}
 
 val LocalUpdateOffer = compositionLocalOf { UpdateOffer(null) {} }
 
@@ -81,9 +100,11 @@ fun rememberUpdateOffer(
     val checker = koinInject<UpdateChecker>()
     val host = koinInject<HostUpdates>()
     val scope = rememberCoroutineScope()
-    var update by remember { mutableStateOf<AppUpdate?>(null) }
-    LaunchedEffect(repo, version, enabled, versionCode) {
-        update = when {
+    // One offer for the app's life: the same instance the banner and Settings both read, so a recheck shows in both.
+    val offer = remember(enabled, repo, version, versionCode) { UpdateOffer(null) }
+    // One check, used by the app opening and by Settings asking again.
+    suspend fun look() {
+        offer.set(when {
             !enabled -> null
             else -> {
                 // GitHub first: it answers from anywhere, where the host is only reachable on the user's tailnet.
@@ -91,13 +112,18 @@ fun rememberUpdateOffer(
                 // A desktop passes no version code and has no APK to install: only a phone asks its host.
                 release ?: if (versionCode > 0) host.check(versionCode) else null
             }
+        })
+    }
+    LaunchedEffect(repo, version, enabled, versionCode) { look() }
+    offer.recheck = { look() }
+    offer.onDismiss = {
+        val dismissed = offer.update
+        if (dismissed != null) {
+            offer.set(null)
+            scope.launch { checker.dismiss(dismissed.version) }
         }
     }
-    return UpdateOffer(update) {
-        val dismissed = update ?: return@UpdateOffer
-        update = null
-        scope.launch { checker.dismiss(dismissed.version) }
-    }
+    return offer
 }
 
 /**
