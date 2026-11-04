@@ -59,6 +59,10 @@ import kotlinx.serialization.json.put
  * [profile] names the Hermes profile the chat belongs to (null: the gateway's launch profile). Only
  * create, resume and REST calls carry it; the gateway scopes the rest by the runtime session.
  */
+/** What the agent is told when a live call's own session is created. */
+private const val CALL_START_INSTRUCTION =
+    "This session is a live phone call: keep every answer to one or two spoken sentences, no lists, no markdown."
+
 class ChatSession(
     private val gateway: GatewayUrl,
     initialStoredId: String?,
@@ -81,6 +85,26 @@ class ChatSession(
     /** For a new chat: what it tells the agent first, out of sight (see `putStartInstruction`); read when it's created. */
     private val startInstruction: () -> String? = { null },
 ) {
+    /**
+     * A session of its own for a live call: empty, so the first spoken request isn't paid for by this chat's whole
+     * history before the voice can say a word. The call's turns are saved back into this chat when it ends
+     * ([dev.hermeskotlin.core.voice.VoiceCallSave]).
+     */
+    fun callSession(): ChatSession = ChatSession(
+        gateway = gateway,
+        initialStoredId = null,
+        initialTitle = null,
+        connection = connection,
+        sessions = sessions,
+        scope = scope,
+        profile = profile,
+        risks = risks,
+        clock = clock,
+        cwd = null,
+        cache = cache,
+        startInstruction = { CALL_START_INSTRUCTION },
+    )
+
     private fun nowSeconds(): Double = clock.now().toEpochMilliseconds() / 1000.0
 
     private val _state = MutableStateFlow(

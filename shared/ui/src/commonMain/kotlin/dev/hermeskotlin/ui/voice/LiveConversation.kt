@@ -10,6 +10,7 @@ import dev.hermeskotlin.core.chat.VoiceLiveTurn
 import dev.hermeskotlin.core.voice.LiveCall
 import dev.hermeskotlin.core.voice.LiveCommands
 import dev.hermeskotlin.core.voice.LiveEvent
+import dev.hermeskotlin.core.voice.CallTurn
 import dev.hermeskotlin.core.voice.LiveFragment
 import dev.hermeskotlin.core.voice.LiveHistoryMessage
 import dev.hermeskotlin.core.voice.VoiceAnswers
@@ -259,6 +260,11 @@ internal class LiveConversation(
             call.close()
         }
     }
+
+    /** What was said on the call, in order: what the chat it came from is given when it ends. */
+    fun turns(): List<CallTurn> = transcript
+        .filter { it.text.isNotBlank() }
+        .map { CallTurn(if (it.speaker == LiveFragment.Speaker.User) "user" else "assistant", it.text) }
 
     fun setMuted(muted: Boolean) {
         call.setMuted(muted)

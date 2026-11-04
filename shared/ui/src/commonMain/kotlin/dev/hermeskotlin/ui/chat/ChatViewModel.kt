@@ -1,6 +1,7 @@
 package dev.hermeskotlin.ui.chat
 
 import dev.hermeskotlin.core.voice.ReadAloudVoices
+import dev.hermeskotlin.core.voice.VoiceCallSave
 import dev.hermeskotlin.core.voice.InMemoryReadAloudVoices
 import androidx.compose.foundation.text.input.TextFieldState
 import dev.hermeskotlin.designsystem.components.stripBidiIsolates
@@ -225,6 +226,8 @@ class ChatViewModel(
     nextPromptApi: NextPromptApi? = null,
     /** Gemini Live on the host: when it answers, the voice chat runs on it instead of GPT-Live. */
     geminiLive: GeminiLiveCalls? = null,
+    /** Saves a live call into the chat it was started from: its turns, and memory of it on the host. */
+    voiceCallSave: VoiceCallSave? = null,
     voiceJobs: VoiceJobs? = null,
     chatLookup: ChatLookup? = null,
 ) : ViewModel(), ChatActions {
@@ -241,6 +244,7 @@ class ChatViewModel(
         voiceJobs = voiceJobs,
         chatLookup = chatLookup ?: SessionsChatLookup(sessions, { target?.gateway?.gatewayUrl }, target?.profile),
         readAloudVoices = readAloudVoices ?: InMemoryReadAloudVoices(),
+        voiceCallSave = voiceCallSave,
     )
 
     /** The profile's pet and its gallery. */

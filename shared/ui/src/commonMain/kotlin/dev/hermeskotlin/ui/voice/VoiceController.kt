@@ -20,6 +20,7 @@ import dev.hermeskotlin.core.voice.DeviceDictation
 import dev.hermeskotlin.core.voice.DeviceDictationUnavailable
 import dev.hermeskotlin.core.voice.LiveCalls
 import dev.hermeskotlin.core.voice.ChatLookup
+import dev.hermeskotlin.core.voice.VoiceCallSave
 import dev.hermeskotlin.core.voice.VoiceJobs
 import dev.hermeskotlin.core.voice.gemini.GeminiLiveCalls
 import dev.hermeskotlin.core.voice.ReadAloudVoices
@@ -44,6 +45,7 @@ import dev.hermeskotlin.core.voice.speakableSoFar
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
@@ -155,6 +157,8 @@ class VoiceController(
     private val geminiLive: GeminiLiveCalls? = null,
     /** Background work the voice can start and be told about, shared by every call. */
     private val voiceJobs: VoiceJobs? = null,
+    /** Saves a live call into the chat it was started from, so the call is part of its history and memory. */
+    private val voiceCallSave: VoiceCallSave? = null,
     /** The user's other chats, so the voice can look through them. */
     private val chatLookup: ChatLookup? = null,
 ) {
@@ -334,17 +338,23 @@ class VoiceController(
      * (another mode, no OpenAI key on the gateway, an older gateway, or no WebRTC on this device).
      */
     private suspend fun startLive(session: ChatSession, gateway: GatewayUrl, profile: String?, opener: CallReason?, onConnectionResult: suspend () -> Unit): Boolean {
-        // Gemini Live first: it answers straight from this phone, and Hermes's requests come back through the chat.
-        val geminiCall = geminiLive?.create(session, gateway, profile, voiceJobs, chatLookup)
+        // The call runs in a session of its own, empty: a spoken request must not pay for this chat's whole history
+        // before the voice can answer. Its turns go back into this chat when the call ends.
+        val callSession = session.callSession()
+        // Gemini Live first: it answers straight from this phone, and Hermes's requests come back through the call.
+        val geminiCall = geminiLive?.create(callSession, gateway, profile, voiceJobs, chatLookup)
         val call = geminiCall ?: run {
             val calls = liveCalls ?: return false
             val status = audio.voiceLiveStatus(gateway, profile)
             if (status !is ApiResult.Success || !status.value.live) return false
             calls.create() ?: return false
         }
+        val callId = callId()
         _chat.value = VoiceChatState(VoicePhase.Connecting, live = true)
+        // GPT-Live still works from the chat itself: its approvals and its relay are the chat's.
+        val voiceSession = if (geminiCall != null) callSession else session
         val conversation = LiveConversation(
-            call, session, _chat, deviceLock, opener?.liveOpener(), onConnectionResult,
+            call, voiceSession, _chat, deviceLock, opener?.liveOpener(), onConnectionResult,
             // A Gemini voice queues the next request behind Hermes's running turn; GPT-Live takes over from it.
             interruptOnRequest = geminiCall == null,
         )
@@ -362,8 +372,19 @@ class VoiceController(
         } finally {
             live = null
             _chat.value = VoiceChatState(error = error.takeUnless { stoppedByUser })
+            // The chat it was started from keeps the call, and memory hears it when the host saves it.
+            val chatId = session.state.value.storedSessionId
+            val saver = voiceCallSave
+            if (geminiCall != null && chatId != null && saver != null) {
+                runCatching { saver.save(chatId, callId, conversation.turns()) }
+            }
         }
         return true
+    }
+
+    /** A call's own id: the host keys the saved call on it, so a retried save continues the row it made. */
+    private fun callId(): String = buildString {
+        repeat(32) { append("0123456789abcdef"[Random.nextInt(16)]) }
     }
 
     /** Hides the card the voice drew on the call's screen. */
