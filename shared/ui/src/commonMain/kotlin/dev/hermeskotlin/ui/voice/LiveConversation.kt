@@ -355,10 +355,12 @@ internal class LiveConversation(
             val replies = if (asked < 0) emptyList() else chat.messages.drop(asked + 1).filterIsInstance<ChatMessage.Assistant>()
             val running = replies.lastOrNull()?.tools?.lastOrNull { it.running }?.let { it.detail ?: it.name }
             // The chip follows the tool running now, and goes once it's done.
-            if (running != tool) {
+            // A finished tool leaves the chip up: the turn is still going, and a chip that vanishes mid-sentence
+            // reads as a glitch. It goes when the turn does.
+            if (running != null && running != tool) {
                 tool = running
                 state.update { it.copy(working = running) }
-                if (running != null) send(LiveCommands.thinking(nextId("think"), id, "Hermes is working: $running. Not done yet."))
+                send(LiveCommands.thinking(nextId("think"), id, "Hermes is working: $running. Not done yet."))
             }
             replies.forEachIndexed { i, reply ->
                 val before = spoken.getOrNull(i).orEmpty()
@@ -371,6 +373,10 @@ internal class LiveConversation(
                 if (i < spoken.size) spoken[i] = reply.text.substring(0, end) else spoken += reply.text.substring(0, end)
             }
             if (!chat.running && !spokeAny) send(LiveCommands.thinking(nextId("think"), id, "Hermes finished that request without a spoken result."))
+            if (!chat.running && tool != null) {
+                tool = null
+                state.update { it.copy(working = null) }
+            }
             !chat.running
         }
     }

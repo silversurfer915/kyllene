@@ -100,7 +100,9 @@ class ChatSession(
         profile = profile,
         risks = risks,
         clock = clock,
-        cwd = null,
+        // The call works where the chat it was started from works: without this it answers about whatever folder the
+        // profile happens to default to.
+        cwd = cwd,
         cache = cache,
         startInstruction = { CALL_START_INSTRUCTION },
         // Started here, as the chat host starts a chat it opens: without it nothing follows the gateway's events, and
