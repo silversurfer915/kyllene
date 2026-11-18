@@ -236,8 +236,8 @@ private class AndroidPhoneToolAccess(
         val ASKS = setOf(PhoneTool.Sound, PhoneTool.Alarms, PhoneTool.Open, PhoneTool.Clipboard, PhoneTool.Geofences, PhoneTool.Calendar)
         const val CHANNEL = "phone_tools"
 
-        /** Where an approval or a question rings (ChatNotifications). */
-        const val CALL_CHANNEL = "calls"
+        /** Where an approval or a question rings (ChatNotifications, which versions the id to change its sound). */
+        const val CALL_CHANNEL = "calls2"
         const val FINE = Manifest.permission.ACCESS_FINE_LOCATION
         const val COARSE = Manifest.permission.ACCESS_COARSE_LOCATION
         const val READ_CALENDAR = Manifest.permission.READ_CALENDAR

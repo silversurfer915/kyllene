@@ -62,6 +62,8 @@ class ChatNotifications(
     init {
         // Running turns once had a louder channel of their own (a Live Update); everything ongoing is quiet now.
         manager.deleteNotificationChannel(CHANNEL_WORKING_OLD)
+        // Its sound was stuck on Android's notification tone; CHANNEL_CALLS replaces it with a call ringtone.
+        manager.deleteNotificationChannel(CHANNEL_CALLS_OLD)
         manager.createNotificationChannelsCompat(
             listOf(
                 NotificationChannelCompat.Builder(CHANNEL_CONNECTION, NotificationManagerCompat.IMPORTANCE_MIN)
@@ -873,8 +875,14 @@ class ChatNotifications(
         private const val CHANNEL_INBOX = "inbox"
         private const val CHANNEL_INBOX_FAILED = "inbox_failed"
 
-        /** Read by PhoneToolAccess too, to tell whether calls can ring. */
-        private const val CHANNEL_CALLS = "calls"
+        /**
+         * Read by PhoneToolAccess too, to tell whether calls can ring.
+         * A notification channel's sound is fixed when it's made, so the id carries a version: "calls" was built
+         * with Android's default notification tone on phones that had it already, and bumping the id is the only
+         * way to ring again.
+         */
+        private const val CHANNEL_CALLS = "calls2"
+        private const val CHANNEL_CALLS_OLD = "calls"
         private const val NUDGE_TAG = "full-screen"
         private const val NUDGE_ID = 4711
         private const val RING_GRACE_MS = 5_000L
