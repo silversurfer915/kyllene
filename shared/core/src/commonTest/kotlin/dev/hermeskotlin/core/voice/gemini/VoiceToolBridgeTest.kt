@@ -1,5 +1,6 @@
 package dev.hermeskotlin.core.voice.gemini
 
+import dev.hermeskotlin.core.voice.CardRow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -23,7 +24,7 @@ class VoiceToolBridgeTest {
         chats: dev.hermeskotlin.core.voice.ChatLookup? = null,
         setAskFirst: (suspend (Boolean) -> Boolean)? = null,
         endCall: (() -> Unit)? = null,
-        showCard: ((String, String) -> Unit)? = null,
+        showCard: ((String, String, List<CardRow>) -> Unit)? = null,
         whenDone: (suspend (String) -> Boolean)? = null,
         openChat: ((String, String) -> Unit)? = null,
     ) = VoiceToolBridge(
@@ -423,7 +424,7 @@ class VoiceToolBridgeTest {
         assertTrue(VoiceToolBridge.SHOW_ON_SCREEN !in plain)
         assertTrue(VoiceToolBridge.CALL_ME_WHEN_DONE !in plain)
 
-        val wired = bridge(showCard = { _, _ -> }, whenDone = { true }).declarations().map { it.name }
+        val wired = bridge(showCard = { _, _, _ -> }, whenDone = { true }).declarations().map { it.name }
         assertTrue(VoiceToolBridge.SHOW_ON_SCREEN in wired)
         assertTrue(VoiceToolBridge.CALL_ME_WHEN_DONE in wired)
     }
@@ -431,7 +432,7 @@ class VoiceToolBridgeTest {
     @Test
     fun showOnScreenDrawsTheCardItWasGiven() = runTest {
         var drawn: Pair<String, String>? = null
-        val outcome = bridge(showCard = { title, body -> drawn = title to body })
+        val outcome = bridge(showCard = { title, body, _ -> drawn = title to body })
             .handle(call(VoiceToolBridge.SHOW_ON_SCREEN, "title" to "Tomorrow", "body" to "Maths 6am\nPhysics 8am"))
 
         assertEquals("ok", outcome.status())
@@ -441,7 +442,7 @@ class VoiceToolBridgeTest {
 
     @Test
     fun showOnScreenRefusesAnEmptyCard() = runTest {
-        val outcome = bridge(showCard = { _, _ -> })
+        val outcome = bridge(showCard = { _, _, _ -> })
             .handle(call(VoiceToolBridge.SHOW_ON_SCREEN, "title" to "Tomorrow", "body" to "   "))
         assertEquals("error", outcome.status())
     }
@@ -491,5 +492,34 @@ class VoiceToolBridgeTest {
         val outcome = bridge(chats = FakeChats(hits = emptyList()), openChat = { _, _ -> })
             .handle(call(VoiceToolBridge.OPEN_CHAT, "chat" to "unicycles"))
         assertEquals("empty", outcome.status())
+    }
+
+    @Test
+    fun showOnScreenPassesOnTheRowsTheVoiceSent() = runTest {
+        var rows: List<CardRow>? = null
+        val raw = kotlinx.serialization.json.buildJsonObject {
+            put("title", kotlinx.serialization.json.JsonPrimitive("Coffee"))
+            put("body", kotlinx.serialization.json.JsonPrimitive("Two nearby"))
+            put("rows", kotlinx.serialization.json.buildJsonArray {
+                add(kotlinx.serialization.json.buildJsonObject {
+                    put("title", kotlinx.serialization.json.JsonPrimitive("Third Wave"))
+                    put("url", kotlinx.serialization.json.JsonPrimitive("https://maps.example/1"))
+                })
+                add(kotlinx.serialization.json.buildJsonObject {
+                    put("title", kotlinx.serialization.json.JsonPrimitive("Dyu"))
+                    put("url", kotlinx.serialization.json.JsonPrimitive("ftp://no"))
+                })
+            })
+        }
+        val outcome = bridge(showCard = { _, _, drawn -> rows = drawn }).handle(
+            GeminiLiveProtocol.FunctionCall(
+                "c1", VoiceToolBridge.SHOW_ON_SCREEN,
+                mapOf("title" to "Coffee", "body" to "Two nearby"), raw,
+            ),
+        )
+        assertEquals("ok", outcome.status())
+        assertEquals(listOf("Third Wave", "Dyu"), rows?.map { it.title })
+        assertEquals("https://maps.example/1", rows?.first()?.url)
+        assertEquals(null, rows?.last()?.url)
     }
 }

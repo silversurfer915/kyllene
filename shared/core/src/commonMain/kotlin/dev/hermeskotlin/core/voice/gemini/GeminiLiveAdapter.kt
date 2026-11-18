@@ -1,5 +1,8 @@
 package dev.hermeskotlin.core.voice.gemini
 
+import dev.hermeskotlin.core.voice.CardRow
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.putJsonArray
 import dev.hermeskotlin.core.voice.ChatLookup
 import dev.hermeskotlin.core.voice.JobStart
 import dev.hermeskotlin.core.voice.CallLater
@@ -141,14 +144,14 @@ private class GeminiLiveAdapter(
             chats = chats,
             setAskFirst = { ask -> chat.setAskFirst(ask) },
             endCall = { endAfterGoodbye() },
-            showCard = { title, body -> sendCard(title, body) },
+            showCard = { title, body, rows -> sendCard(title, body, rows) },
             whenDone = { reason -> ringWhenDone(chat, reason) },
             openChat = { id, title -> sendOpenChat(id, title) },
         )
     }
 
     /** A card for the call's screen, as the event the call UI reads. */
-    private fun sendCard(title: String, body: String) {
+    private fun sendCard(title: String, body: String, rows: List<CardRow>) {
         scope.launch {
             runCatching {
                 frames.send(
@@ -156,6 +159,17 @@ private class GeminiLiveAdapter(
                         put("type", "screen.card")
                         put("title", title)
                         put("body", body)
+                        if (rows.isNotEmpty()) {
+                            putJsonArray("rows") {
+                                rows.forEach { row ->
+                                    addJsonObject {
+                                        put("title", row.title)
+                                        row.subtitle?.let { put("subtitle", it) }
+                                        row.url?.let { put("url", it) }
+                                    }
+                                }
+                            }
+                        }
                     }.toString(),
                 )
             }

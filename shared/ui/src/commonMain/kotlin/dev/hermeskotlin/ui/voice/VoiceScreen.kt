@@ -1,5 +1,8 @@
 package dev.hermeskotlin.ui.voice
 
+import androidx.compose.ui.platform.LocalUriHandler
+import com.composables.icons.lucide.ChevronRight
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -273,6 +276,56 @@ private fun DoneCard(card: CallCard, onDismiss: () -> Unit, modifier: Modifier) 
             Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState()).padding(end = 10.dp),
             textStyle = Theme[typography][bodySmall].copy(fontSize = 14.sp, lineHeight = 20.sp),
         )
+        // Rows the voice made tappable: a place, a link, a file. One with an address opens it.
+        if (card.rows.isNotEmpty()) {
+            val uriHandler = LocalUriHandler.current
+            Column(Modifier.padding(top = 4.dp, end = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                card.rows.forEach { row ->
+                    val openable = row.url != null
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .then(
+                                if (openable) {
+                                    Modifier.clickable(role = Role.Button) { row.url?.let { uriHandler.openUri(it) } }
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                row.title,
+                                style = Theme[typography][bodySmall].copy(fontSize = 14.sp, lineHeight = 19.sp),
+                                color = if (openable) Theme[colors][accent] else Theme[colors][textColor],
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            row.subtitle?.let {
+                                Text(
+                                    it,
+                                    style = Theme[typography][caption].copy(fontSize = 12.sp, lineHeight = 16.sp),
+                                    color = Theme[colors][textTertiary],
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                        if (openable) {
+                            Icon(
+                                Lucide.ChevronRight,
+                                contentDescription = null,
+                                tint = Theme[colors][textTertiary],
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

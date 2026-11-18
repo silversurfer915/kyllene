@@ -1,5 +1,6 @@
 package dev.hermeskotlin.ui.voice
 
+import dev.hermeskotlin.core.voice.CardRow
 import dev.hermeskotlin.core.chat.ChatMessage
 import dev.hermeskotlin.core.chat.ChatSession
 import dev.hermeskotlin.core.chat.callContextNote
@@ -111,7 +112,7 @@ data class VoiceChatState(
 data class TranscriptLine(val fromVoice: Boolean, val text: String)
 
 /** A card drawn on the call's screen: the voice's `show_on_screen`. Shown until it's replaced or hidden. */
-data class CallCard(val title: String, val body: String)
+data class CallCard(val title: String, val body: String, val rows: List<CardRow> = emptyList())
 
 data class DictationState(
     val recording: Boolean = false,

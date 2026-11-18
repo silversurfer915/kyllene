@@ -228,7 +228,7 @@ internal class LiveConversation(
                         ended.complete(if (event.reason == "closed") "The live call ended." else "The live call ended: ${event.reason}")
                         break
                     }
-                    is LiveEvent.Screen -> state.update { it.copy(card = CallCard(event.title, event.body)) }
+                    is LiveEvent.Screen -> state.update { it.copy(card = CallCard(event.title, event.body, event.rows)) }
                     is LiveEvent.OpenChat -> state.update { it.copy(openChat = event.id to event.title) }
                     LiveEvent.Started -> {
                         onConnectionResult()

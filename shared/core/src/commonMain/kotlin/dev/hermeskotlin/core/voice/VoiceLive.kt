@@ -1,5 +1,6 @@
 package dev.hermeskotlin.core.voice
 
+import kotlinx.serialization.json.JsonArray
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -21,6 +22,9 @@ import kotlinx.serialization.json.put
  */
 
 /** One piece of the call's running transcript. Times are milliseconds into the call. */
+/** A tappable line on a call's card: a place to open, a link, a file. [url] is http(s) or absent. */
+data class CardRow(val title: String, val subtitle: String? = null, val url: String? = null)
+
 data class LiveFragment(val speaker: Speaker, val text: String, val startMs: Long, val endMs: Long) {
     enum class Speaker { User, Assistant }
 }
@@ -41,7 +45,7 @@ sealed interface LiveEvent {
     data class Failure(val message: String) : LiveEvent
     data class Closed(val reason: String, val usageSeconds: Double?) : LiveEvent
     /** Something for the call's screen rather than the ear: a card Hermes drew while it talked. */
-    data class Screen(val title: String, val body: String) : LiveEvent
+    data class Screen(val title: String, val body: String, val rows: List<CardRow> = emptyList()) : LiveEvent
     /** The voice asked for another chat to be opened: the call ends and the chat comes up. */
     data class OpenChat(val id: String, val title: String) : LiveEvent
 }
@@ -53,6 +57,20 @@ fun parseLiveEvent(raw: String): LiveEvent? {
     val event = runCatching { eventJson.parseToJsonElement(raw).jsonObject }.getOrNull() ?: return null
     fun JsonObject.text(key: String) = (this[key] as? JsonPrimitive)?.contentOrNull
     fun JsonObject.number(key: String) = (this[key] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull()
+    /** A card's tappable rows: a line with a title, and a link when the voice gave a web address. */
+    fun JsonObject.rows(key: String): List<CardRow> {
+        val array = this[key] as? JsonArray ?: return emptyList()
+        return array.mapNotNull { element ->
+            val row = element as? JsonObject ?: return@mapNotNull null
+            val title = row.text("title")?.trim().orEmpty()
+            if (title.isEmpty()) return@mapNotNull null
+            CardRow(
+                title = title,
+                subtitle = row.text("subtitle")?.trim()?.takeIf { it.isNotEmpty() },
+                url = row.text("url")?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
+            )
+        }.take(6)
+    }
     return when (val type = event.text("type")) {
         "session.started" -> LiveEvent.Started
         "session.input_transcript.delta", "session.output_transcript.delta" -> LiveEvent.Transcript(
@@ -72,7 +90,11 @@ fun parseLiveEvent(raw: String): LiveEvent? {
         }
         "session.closed" -> LiveEvent.Closed(event.text("reason") ?: "closed", (event["usage"] as? JsonObject)?.number("seconds"))
         // The adapter is the only one that sends this: a card the voice put on the call's screen.
-        "screen.card" -> LiveEvent.Screen(event.text("title").orEmpty(), event.text("body").orEmpty())
+        "screen.card" -> LiveEvent.Screen(
+            title = event.text("title").orEmpty(),
+            body = event.text("body").orEmpty(),
+            rows = event.rows("rows"),
+        )
         "screen.open_chat" -> event.text("chat")?.takeIf { it.isNotBlank() }
             ?.let { LiveEvent.OpenChat(it, event.text("title").orEmpty()) }
         else -> null

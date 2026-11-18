@@ -77,7 +77,10 @@ object GeminiLiveProtocol {
     data class FunctionCall(
         val id: String,
         val name: String,
+        /** The scalar arguments, as text: everything a tool reads one value of. */
         val arguments: Map<String, String>,
+        /** The arguments as they arrived: a tool with a list of its own (a card's rows) reads it here. */
+        val raw: JsonObject? = null,
     )
 
     /** `gemini-3.8-live` -> `models/gemini-3.8-live`. */
@@ -258,7 +261,8 @@ object GeminiLiveProtocol {
                 val obj = call.asObject() ?: return@mapNotNull null
                 val id = obj["id"]?.asString() ?: return@mapNotNull null
                 val name = obj["name"]?.asString() ?: return@mapNotNull null
-                FunctionCall(id, name, stringArguments(obj["args"]?.asObject()))
+                val args = obj["args"]?.asObject()
+                FunctionCall(id, name, stringArguments(args), args)
             }
             if (parsed.isNotEmpty()) events += ServerEvent.ToolCall(parsed)
         }

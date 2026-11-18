@@ -1,5 +1,9 @@
 package dev.hermeskotlin.core.voice.gemini
 
+import kotlinx.serialization.json.contentOrNull
+import dev.hermeskotlin.core.voice.CardRow
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import dev.hermeskotlin.core.voice.ChatHit
 import dev.hermeskotlin.core.voice.ChatLookup
 import dev.hermeskotlin.core.voice.JobStart
@@ -65,7 +69,7 @@ class VoiceToolBridge(
     /** Ends the call, once the voice has had a moment to say goodbye. */
     private val endCall: (() -> Unit)? = null,
     /** Draws a card on the call's screen: title and body. Null where the call has no screen to draw on. */
-    private val showCard: ((String, String) -> Unit)? = null,
+    private val showCard: ((String, String, List<CardRow>) -> Unit)? = null,
     /** Rings this phone when the chat's work ends, with what the voice should say when it's answered. */
     private val whenDone: (suspend (String) -> Boolean)? = null,
     /** Brings another chat to the screen: id and title. Null where the call can't move the app. */
@@ -221,7 +225,7 @@ class VoiceToolBridge(
         INTERRUPT_JOB -> interruptJob(call.arguments["message"])
         CANCEL_JOB -> cancelJobTool(call.arguments["job"])
         SET_ASK_FIRST -> setAskFirstTool(call.arguments["ask"])
-        SHOW_ON_SCREEN -> showOnScreen(call.arguments["title"], call.arguments["body"])
+        SHOW_ON_SCREEN -> showOnScreen(call.arguments["title"], call.arguments["body"], call.raw?.get("rows"))
         CALL_ME_WHEN_DONE -> callMeWhenDone(call.arguments["reason"])
         OPEN_CHAT -> openChatTool(call.arguments["chat"])
         END_CONVERSATION -> endConversation()
@@ -262,6 +266,26 @@ class VoiceToolBridge(
                         put("type", "STRING")
                         put("description", "What to show: short lines, one to a line, at most a dozen.")
                     }
+                    putJsonObject("rows") {
+                        put("type", "ARRAY")
+                        put(
+                            "description",
+                            "Lines the user can tap, at most six: a place, a link, a file. Give each a title, " +
+                                "an optional subtitle, and a web address to open when one exists.",
+                        )
+                        putJsonObject("items") {
+                            put("type", "OBJECT")
+                            putJsonObject("properties") {
+                                putJsonObject("title") { put("type", "STRING") }
+                                putJsonObject("subtitle") { put("type", "STRING") }
+                                putJsonObject("url") {
+                                    put("type", "STRING")
+                                    put("description", "An http or https address to open when the row is tapped.")
+                                }
+                            }
+                            putJsonArray("required") { add(JsonPrimitive("title")) }
+                        }
+                    }
                 }
                 putJsonArray("required") {
                     add(JsonPrimitive("title"))
@@ -270,6 +294,23 @@ class VoiceToolBridge(
             },
             behavior = GeminiLiveProtocol.FunctionDeclaration.Behavior.NON_BLOCKING,
         )
+
+    /** A card's rows, as the tool sent them: a title each, an optional line under it and a web address to open. */
+    private fun cardRows(raw: JsonElement?): List<CardRow> {
+        val array = raw as? JsonArray ?: return emptyList()
+        return array.mapNotNull { element ->
+            val row = element as? JsonObject ?: return@mapNotNull null
+            val title = (row["title"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+            if (title.isEmpty()) return@mapNotNull null
+            CardRow(
+                title = title.take(MAX_CARD_TITLE_CHARS),
+                subtitle = (row["subtitle"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() },
+                url = (row["url"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { url ->
+                    url.startsWith("http://") || url.startsWith("https://")
+                },
+            )
+        }.take(MAX_CARD_ROWS)
+    }
 
     private fun callWhenDoneDeclaration(): GeminiLiveProtocol.FunctionDeclaration =
         GeminiLiveProtocol.FunctionDeclaration(
@@ -289,13 +330,13 @@ class VoiceToolBridge(
             behavior = GeminiLiveProtocol.FunctionDeclaration.Behavior.NON_BLOCKING,
         )
 
-    private fun showOnScreen(title: String?, body: String?): ToolOutcome {
+    private fun showOnScreen(title: String?, body: String?, rows: JsonElement?): ToolOutcome {
         val draw = showCard
             ?: return failure("I can't put anything on the screen from this call.", SHOW_ON_SCREEN, WHEN_IDLE)
         val text = body?.trim().orEmpty()
         if (text.isEmpty()) return failure("There was nothing to put on the screen.", SHOW_ON_SCREEN, WHEN_IDLE)
         val heading = title?.trim().orEmpty().ifBlank { "Hermes" }.take(MAX_CARD_TITLE_CHARS)
-        draw(heading, text.take(MAX_CARD_CHARS))
+        draw(heading, text.take(MAX_CARD_CHARS), cardRows(rows))
         return ToolOutcome(
             buildJsonObject {
                 put("status", "ok")
@@ -734,6 +775,7 @@ class VoiceToolBridge(
         /** A card is read at a glance, beside a moving call screen: a title and a dozen short lines at most. */
         const val MAX_CARD_TITLE_CHARS = 80
         const val MAX_CARD_CHARS = 1_600
+        const val MAX_CARD_ROWS = 6
 
         /** What the ring says when the voice gave no reason of its own. */
         const val MAX_REASON_CHARS = 300

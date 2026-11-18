@@ -137,4 +137,19 @@ class VoiceLiveTest {
         assertEquals(0, speakableClauseCut("Run `make test`, then push."))
         assertEquals(0, speakableClauseCut("See [the docs](https://x.y), then push."))
     }
+
+    @Test
+    fun a_card_carries_rows_the_user_can_tap() {
+        val event = parseLiveEvent(
+            """{"type":"screen.card","title":"Coffee","body":"Two nearby","rows":[
+                 {"title":"Third Wave","subtitle":"80 Feet Road","url":"https://maps.example/1"},
+                 {"title":"Dyu","url":"javascript:alert(1)"},
+                 {"subtitle":"no title"}]}""",
+        )
+        val card = event as LiveEvent.Screen
+        assertEquals(listOf("Third Wave", "Dyu"), card.rows.map { it.title })
+        assertEquals("https://maps.example/1", card.rows.first().url)
+        // Only a web address is openable, and a row with no title is not a row.
+        assertEquals(null, card.rows.last().url)
+    }
 }
