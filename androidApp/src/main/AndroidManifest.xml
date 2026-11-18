@@ -341,6 +341,29 @@
 
         <!-- Keeps the gateway socket alive while a turn runs, and the process up with Notifications anywhere. -->
         <service
+            android:name=".phone.KylleneAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/kyllene_accessibility" />
+        </service>
+
+        <!-- Turns the screen on from a tool call, over the lock screen, and asks the keyguard to step aside. -->
+        <activity
+            android:name=".phone.WakeActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <service
             android:name=".notify.ChatService"
             android:exported="false"
             android:foregroundServiceType="specialUse">

@@ -36,3 +36,6 @@ internal fun JsonObject.boolean(name: String): Boolean? {
     if (value !is JsonPrimitive || value.isString) throw PhoneToolException("$name must be true or false.")
     return value.content.toBooleanStrictOrNull() ?: throw PhoneToolException("$name must be true or false.")
 }
+
+/** The agent's [name] argument as a number for a gesture: a coordinate or a length. */
+internal fun JsonObject.float(name: String): Float? = double(name)?.toFloat()

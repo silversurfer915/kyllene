@@ -43,6 +43,7 @@ class AndroidPhoneTools(
     private val contacts = ContactsTool(context)
     private val health = HealthTool(context)
     private val callMe = CallMeTool(notifications, chats)
+    private val control = ControlTool(context)
     private val showUi = ShowUiTool(context, screens, chats)
 
     override suspend fun run(tool: PhoneTool, args: JsonObject, session: String): JsonElement = withContext(Dispatchers.IO) {
@@ -62,6 +63,7 @@ class AndroidPhoneTools(
             PhoneTool.Contacts -> contacts.run(args)
             PhoneTool.Health -> health.run(args)
             PhoneTool.CallMe -> callMe.run(args, session)
+            PhoneTool.Control -> control.run(args)
             PhoneTool.ShowUi -> showUi.run(args, session)
         }
     }

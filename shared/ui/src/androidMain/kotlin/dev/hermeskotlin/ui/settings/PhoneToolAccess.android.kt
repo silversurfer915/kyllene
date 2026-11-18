@@ -80,6 +80,8 @@ private class AndroidPhoneToolAccess(
         tool in ASKS && !notificationsOn() -> "Turn on Kyllene's notifications: changes are asked there."
         tool == PhoneTool.Sound && !policyAccess() -> "Allow Kyllene to change Do Not Disturb."
         tool == PhoneTool.ScreenTime && !usageAccess() -> "Give Kyllene Usage access, to see which apps you use."
+        tool == PhoneTool.Control && !screenControlOn() ->
+            "Turn on Kyllene under Accessibility, so it can tap and read the screen."
         tool == PhoneTool.Location && !granted(FINE) && !granted(COARSE) -> "Allow Kyllene to use this phone's location."
         tool == PhoneTool.Geofences && !granted(FINE) -> "Allow precise location: Android only watches places with it."
         tool == PhoneTool.Geofences && needsBackground() ->
@@ -99,6 +101,19 @@ private class AndroidPhoneToolAccess(
             else -> null
         }
         else -> null
+    }
+
+    /**
+     * Whether the screen-control service is on. Android records it in a secure setting by component name; this reads
+     * that rather than the running service, so a grant made a moment ago already counts.
+     */
+    private fun screenControlOn(): Boolean {
+        val component = "${context.packageName}/dev.hermeskotlin.android.phone.KylleneAccessibilityService"
+        val enabled = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        ).orEmpty()
+        return enabled.split(':').any { it.equals(component, ignoreCase = true) }
     }
 
     private fun needsBackground() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !granted(BACKGROUND)
@@ -123,6 +138,7 @@ private class AndroidPhoneToolAccess(
             // Health Connect's own screen: the user picks which of the three.
             tool == PhoneTool.Health && health?.status == HealthConnectClient.SDK_AVAILABLE -> askHealth(HEALTH_READS)
             tool == PhoneTool.Sound && !policyAccess() -> open(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+            tool == PhoneTool.Control && !screenControlOn() -> open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             tool == PhoneTool.ScreenTime && !usageAccess() -> {
                 // Kyllene's own switch where Android has a page for it (10 and later), else the list of apps.
                 val list = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)

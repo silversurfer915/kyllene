@@ -1,5 +1,6 @@
 package dev.hermeskotlin.ui.settings
 
+import com.composables.icons.lucide.MousePointerClick
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -666,6 +667,7 @@ internal val PhoneTool.icon: ImageVector
         PhoneTool.Calendar -> Lucide.CalendarDays
         PhoneTool.Contacts -> Lucide.Contact
         PhoneTool.Health -> Lucide.HeartPulse
+        PhoneTool.Control -> Lucide.MousePointerClick
         PhoneTool.ShowUi -> Lucide.LayoutPanelTop
         PhoneTool.CallMe -> Lucide.PhoneCall
     }

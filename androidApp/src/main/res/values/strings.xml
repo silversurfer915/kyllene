@@ -6,4 +6,8 @@
     <string name="shortcut_voice">New chat with voice</string>
     <string name="shortcut_voice_chat">Call Hermes</string>
     <string name="shortcut_voice_chat_moved">Call Hermes moved. Hold the app icon and pin it again.</string>
+
+    <string name="accessibility_service_label">Kyllene screen control</string>
+    <string name="accessibility_service_summary">Lets Hermes tap, type and read the screen when you ask it to.</string>
+    <string name="accessibility_service_description">Hermes can act on this screen for you: tap, type, swipe and read what is shown. Turn this off when you do not want it to. Password fields are never read.</string>
 </resources>
