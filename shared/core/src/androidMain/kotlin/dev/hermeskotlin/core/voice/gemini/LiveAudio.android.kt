@@ -1,5 +1,8 @@
 package dev.hermeskotlin.core.voice.gemini
 
+import android.media.AudioDeviceInfo
+import android.os.Build
+import androidx.annotation.RequiresApi
 import android.annotation.SuppressLint
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -156,8 +159,7 @@ private class AndroidLiveAudio : LiveAudio {
         val manager = audioManager ?: return
         previousMode = manager.mode
         runCatching { manager.mode = AudioManager.MODE_IN_COMMUNICATION }
-        // Hands-free unless a headset is in, which is how a call on the phone is routed.
-        runCatching { manager.isSpeakerphoneOn = !manager.isWiredHeadsetOn && !manager.isBluetoothScoOn }
+        routeCommunication(manager)
         val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
             .setAudioAttributes(callAttributes())
             .setWillPauseWhenDucked(true)
@@ -183,8 +185,53 @@ private class AndroidLiveAudio : LiveAudio {
         val manager = audioManager ?: return
         focus?.let { runCatching { manager.abandonAudioFocusRequest(it) } }
         focus = null
-        runCatching { manager.isSpeakerphoneOn = false }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching { manager.removeOnCommunicationDeviceChangedListener(routeListener) }
+            runCatching { manager.clearCommunicationDevice() }
+        } else {
+            runCatching { manager.isSpeakerphoneOn = false }
+        }
         runCatching { manager.mode = previousMode }
+    }
+
+    /**
+     * A call's route: the headset when one is in, the loudspeaker when none is — and it follows the wire if headphones
+     * are plugged or pulled mid-call.
+     *
+     * `isSpeakerphoneOn` is not enough on Android 12 and later: the phone keeps its own choice of communication device
+     * unless one is set, so a call with headphones in came out of the loudspeaker. The device has to be named.
+     */
+    @Suppress("DEPRECATION")
+    private fun routeCommunication(manager: AudioManager) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            pickDevice(manager)
+            // Plugged in or pulled out mid-call: the route follows, as a phone call's does.
+            runCatching {
+                manager.removeOnCommunicationDeviceChangedListener(routeListener)
+                LiveAudioContext.context?.mainExecutor?.let { manager.addOnCommunicationDeviceChangedListener(it, routeListener) }
+            }
+        } else {
+            runCatching {
+                manager.isSpeakerphoneOn = !manager.isWiredHeadsetOn && !manager.isBluetoothScoOn
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun pickDevice(manager: AudioManager) {
+        val devices = runCatching { manager.availableCommunicationDevices }.getOrDefault(emptyList())
+        val headset = devices.firstOrNull { it.type in HEADSETS }
+        val target = headset
+            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            ?: return
+        if (manager.communicationDevice?.id == target.id) return
+        runCatching { manager.setCommunicationDevice(target) }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private val routeListener = AudioManager.OnCommunicationDeviceChangedListener {
+        // Whatever the phone picked, the call's rule stands: a headset if one is in, the loudspeaker if not.
+        audioManager?.let { manager -> runCatching { pickDevice(manager) } }
     }
 
     private fun callAttributes(): AudioAttributes = AudioAttributes.Builder()
@@ -240,5 +287,14 @@ private class AndroidLiveAudio : LiveAudio {
     private companion object {
         /** 20 ms of 16 kHz mono PCM16: 320 samples. */
         const val FRAME_BYTES = 640
+
+        /** Anything that should keep a call out of the loudspeaker. */
+        val HEADSETS = setOf(
+            AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            AudioDeviceInfo.TYPE_USB_HEADSET,
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+            AudioDeviceInfo.TYPE_BLE_HEADSET,
+        )
     }
 }
