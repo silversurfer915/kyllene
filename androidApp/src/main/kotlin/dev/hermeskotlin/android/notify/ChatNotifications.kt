@@ -100,7 +100,11 @@ class ChatNotifications(
                     .setName("Calls for an answer")
                     .setDescription("An approval or a question rings like a call (Settings → Phone tools → Calls).")
                     .setSound(
-                        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
+                        // A phone with its ringtone unset has no TYPE_RINGTONE URI at all, and the channel would then
+                        // be silent for ever: the alarm then the notification tone stand in for it.
+                        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
                         AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
                             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
