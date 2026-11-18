@@ -333,7 +333,9 @@ private class GeminiLiveAdapter(
     /** What a session that just took over is told: the call's recent words, and what Hermes is still doing. */
     private suspend fun rejoin(socket: GeminiLiveTransport) {
         val running = runCatching { jobs?.running().orEmpty().map { it.title } }.getOrDefault(emptyList())
-        runCatching { socket.send(GeminiLiveProtocol.contextNoteMessage(continuity.rejoinNote(running))) }
+        // A function call still open is a question out to Hermes: its answer is coming here, not down the old socket.
+        val waiting = openCalls.isNotEmpty()
+        runCatching { socket.send(GeminiLiveProtocol.contextNoteMessage(continuity.rejoinNote(running, waiting))) }
     }
 
     /** Ends this session so the loop opens the next one with [resumeHandle]. */

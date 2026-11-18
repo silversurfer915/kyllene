@@ -35,13 +35,20 @@ internal class CallContinuity(
      * What a fresh session is told, quietly, before anything else goes out: the interruption, the last of the call,
      * what Hermes is still working on, and that a request in flight may have gone with the connection.
      */
-    fun rejoinNote(running: List<String>): String = buildString {
+    fun rejoinNote(running: List<String>, waiting: Boolean = false): String = buildString {
         append("[Kyllene: the call's connection dropped and is back on a new session. Don't mention the ")
         append("interruption unless they ask; carry on where you were.]")
         val before = said.toString().trim().takeLast(rejoinChars)
         if (before.isNotEmpty()) append("\n\nWhat was said before it went:\n").append(before)
         if (running.isNotEmpty()) append("\n\nHermes is still working on: ").append(running.joinToString("; "))
-        append("\n\nA request in flight may have been lost with the connection: if you were waiting on one, ")
-        append("ask again.")
+        // The answer travels through Hermes, not this session: a rotation doesn't lose it, and asking again would
+        // spend a second turn on the same question.
+        if (waiting) {
+            append("\n\nThe answer to their last request is still on its way: don't ask again, and if they wonder, ")
+            append("say you're still waiting on it.")
+        } else {
+            append("\n\nA request in flight may have been lost with the connection: if you were waiting on one, ")
+            append("ask again.")
+        }
     }
 }

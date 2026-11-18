@@ -44,4 +44,18 @@ class CallContinuityTest {
         assertTrue("still working on: the Android build" in note, note)
         assertTrue("ask again" in note, note)
     }
+
+    @Test
+    fun a_reconnect_while_hermes_answers_says_the_answer_is_coming() {
+        val call = CallContinuity()
+        val note = call.rejoinNote(running = emptyList(), waiting = true)
+        assertTrue(note.contains("still on its way"))
+        assertTrue(note.contains("don't ask again"))
+        assertFalse(note.contains("ask again."))
+    }
+
+    @Test
+    fun a_reconnect_with_nothing_out_still_offers_to_ask_again() {
+        assertTrue(CallContinuity().rejoinNote(running = emptyList()).contains("ask again"))
+    }
 }

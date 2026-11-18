@@ -30,6 +30,19 @@ import kotlinx.serialization.json.putJsonObject
 /** The only language the voice speaks, whatever the transcript guesses the user spoke. */
 const val SPOKEN_LANGUAGE = "en-US"
 
+/**
+ * The same JSON with every object's keys sorted. Gemini's setup goes out with a large system instruction and the whole
+ * tool list each session, and a server that caches prompts (a local model behind a compatible endpoint) only reuses it
+ * when the bytes match: sorting makes two identical setups byte-identical.
+ */
+internal fun sortedKeys(element: JsonElement): String = element.sortedDeep().toString()
+
+private fun JsonElement.sortedDeep(): JsonElement = when (this) {
+    is JsonObject -> JsonObject(entries.sortedBy { it.key }.associate { (key, value) -> key to value.sortedDeep() })
+    is JsonArray -> JsonArray(map { it.sortedDeep() })
+    else -> this
+}
+
 object GeminiLiveProtocol {
     const val MODEL = "models/gemini-3.8-live"
     const val INPUT_SAMPLE_RATE = 16_000
@@ -79,7 +92,7 @@ object GeminiLiveProtocol {
         voice: String? = null,
         resumptionHandle: String? = null,
         silenceMs: Int = SILENCE_MS,
-    ): String = buildJsonObject {
+    ): String = sortedKeys(buildJsonObject {
         putJsonObject("setup") {
             put("model", qualifiedModel(model))
 
@@ -133,7 +146,7 @@ object GeminiLiveProtocol {
             putJsonObject("inputAudioTranscription") {}
             putJsonObject("outputAudioTranscription") {}
         }
-    }.toString()
+    })
 
     fun audioMessage(pcm16: ByteArray): String = buildJsonObject {
         putJsonObject("realtimeInput") {
