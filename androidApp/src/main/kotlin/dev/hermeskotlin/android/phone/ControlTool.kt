@@ -51,6 +51,22 @@ internal class ControlTool(private val context: android.content.Context) {
 
     fun run(args: JsonObject): JsonObject {
         keepScreenOn()
+        // A list of steps runs here, one after another, so a whole sequence costs one call and one wait instead of
+        // one per tap — the slow part of driving a screen is the trip back to the agent, not the tap.
+        (args["steps"] as? kotlinx.serialization.json.JsonArray)?.let { steps ->
+            if (steps.isEmpty()) throw PhoneToolException("steps is empty.")
+            if (steps.size > MAX_STEPS) throw PhoneToolException("steps takes at most $MAX_STEPS.")
+            var last: JsonObject = done("nothing", 0f, 0f)
+            steps.forEach { step ->
+                val one = step as? JsonObject ?: throw PhoneToolException("every step must be an object.")
+                last = act(one)
+            }
+            return last
+        }
+        return act(args)
+    }
+
+    private fun act(args: JsonObject): JsonObject {
         val service = KylleneAccessibilityService.instance
             ?: throw PhoneToolException(
                 "Screen control is off. Turn Kyllene on in Settings → Accessibility, then ask again.",
@@ -66,9 +82,11 @@ internal class ControlTool(private val context: android.content.Context) {
             "home" -> global(service, AccessibilityService.GLOBAL_ACTION_HOME)
             "recents" -> global(service, AccessibilityService.GLOBAL_ACTION_RECENTS)
             "notifications" -> global(service, AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS)
-            "wake" -> wake()
+            "wake" -> wake(dismiss = false)
+            "unlock" -> wake(dismiss = true)
             else -> throw PhoneToolException(
-                "action is read, tap, long_press, swipe, scroll, type, back, home, recents, notifications or wake.",
+                "action is read, tap, long_press, swipe, scroll, type, back, home, recents, notifications, " +
+                    "wake or unlock.",
             )
         }
     }
@@ -93,6 +111,9 @@ internal class ControlTool(private val context: android.content.Context) {
         val pkg = root.packageName?.toString()
         return buildJsonObject {
             put("app", pkg ?: "unknown")
+            put("locked", locked())
+            if (locked()) put("note", "The phone is locked: this is the lock screen. Only its owner can unlock it — " +
+                "ask them, or use wake to show the unlock prompt.")
             putJsonArray("lines") { lines.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } }
             put("truncated", lines.size >= limit)
         }
@@ -184,13 +205,27 @@ internal class ControlTool(private val context: android.content.Context) {
      * Turns the screen on and opens the phone over the lock screen, asking the keyguard to step aside. The PIN or
      * fingerprint is the user's: an app cannot give it.
      */
-    private fun wake(): JsonObject {
-        WakeActivity.start(context)
+    private fun wake(dismiss: Boolean): JsonObject {
+        WakeActivity.start(context, dismiss)
         return buildJsonObject {
             put("woken", true)
-            put("note", "The screen is on over the lock screen. If it asks to unlock, only they can.")
+            put("locked", locked())
+            put(
+                "note",
+                if (dismiss) {
+                    "The screen is on and the phone is asking to be unlocked. Only its owner can give the PIN or " +
+                        "fingerprint; once they do, carry on."
+                } else {
+                    "The screen is on over the lock screen. If it asks to unlock, only they can."
+                },
+            )
         }
     }
+
+    /** Whether the phone is locked now: the one reason a tap lands on nothing. */
+    private fun locked(): Boolean =
+        (context.getSystemService(android.content.Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager)
+            ?.isKeyguardLocked == true
 
     private fun dispatch(service: AccessibilityService, path: Path, ms: Long) {
         val gesture = GestureDescription.Builder()
@@ -213,6 +248,7 @@ internal class ControlTool(private val context: android.content.Context) {
         const val DEFAULT_LINES = 40
         const val MAX_DEPTH = 40
         const val MAX_LABEL_CHARS = 120
+        const val MAX_STEPS = 12
         const val TAP_MS = 40L
         const val LONG_PRESS_MS = 600L
         const val SWIPE_MS = 300

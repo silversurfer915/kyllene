@@ -169,9 +169,12 @@ class PhoneToolsBridge(
                         }
                     }
             }
+            // Driving the screen is a conversation of small steps: waiting 15 s between each would make every tap
+            // feel broken, so a phone with screen control on asks twice a second instead.
+            val poll = if (PhoneTool.Control in on) CONTROL_POLL_MS else POLL_MS
             while (true) {
                 drain()
-                delay(POLL_MS)
+                delay(poll)
             }
         }
     }
@@ -494,6 +497,7 @@ class PhoneToolsBridge(
 
         /** For chats this phone doesn't watch: how long a call may wait before the phone looks. */
         const val POLL_MS = 15_000L
+        const val CONTROL_POLL_MS = 1_500L
 
         /** After a chat's `phone_*` tool starts: when to look for its call. */
         val EVENT_DRAINS_MS = longArrayOf(300, 700, 1_500, 3_000)
