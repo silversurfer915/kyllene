@@ -22,7 +22,35 @@ import kotlinx.serialization.json.putJsonArray
  */
 internal class ControlTool(private val context: android.content.Context) {
 
+    /**
+     * The screen, held on while a hand is on the phone. A screen that sleeps mid-tap also locks, and a locked phone
+     * stops the very tool that was using it — so every action buys [AWAKE_AFTER_MS] of screen, and the last one
+     * decides when the phone may sleep again.
+     *
+     * shortcut: SCREEN_BRIGHT_WAKE_LOCK, deprecated since API 17 but still honoured; upgrade to a foreground service
+     * with setKeepScreenOn when Android drops it.
+     */
+    @Suppress("DEPRECATION")
+    private val wakeLock = (context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager)
+        .newWakeLock(
+            android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+            "kyllene:screen-control",
+        )
+        .apply { setReferenceCounted(false) }
+
+    private val keeper = android.os.Handler(android.os.Looper.getMainLooper())
+    private val letGo = Runnable { runCatching { if (wakeLock.isHeld) wakeLock.release() } }
+
+    private fun keepScreenOn() {
+        runCatching {
+            if (!wakeLock.isHeld) wakeLock.acquire()
+            keeper.removeCallbacks(letGo)
+            keeper.postDelayed(letGo, AWAKE_AFTER_MS)
+        }
+    }
+
     fun run(args: JsonObject): JsonObject {
+        keepScreenOn()
         val service = KylleneAccessibilityService.instance
             ?: throw PhoneToolException(
                 "Screen control is off. Turn Kyllene on in Settings → Accessibility, then ask again.",
@@ -180,6 +208,8 @@ internal class ControlTool(private val context: android.content.Context) {
     }
 
     private companion object {
+        /** How long the screen stays on after an action, so a chain of them never lets it sleep between. */
+        const val AWAKE_AFTER_MS = 3 * 60 * 1000L
         const val DEFAULT_LINES = 40
         const val MAX_DEPTH = 40
         const val MAX_LABEL_CHARS = 120
